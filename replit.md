@@ -91,11 +91,20 @@ Complete CRUD operations for incident logs with the following fields:
 - Automatic cleanup when incidents are deleted
 
 ### 5. Report Generation & Printing
-- **Generate Report**: Professional print-friendly incident reports
+- **Multi-Incident Reports**: Generate reports for filtered sets of incidents (not just individual incidents)
+- **Comprehensive Filtering**: Filter by any combination of:
+  - Date range (start and end dates)
+  - Severity level (Low, Medium, High, Critical, or All)
+  - Camera location (partial text match)
+  - Reported by (partial text match with autocomplete)
+  - Reviewed by (partial text match with autocomplete)
+  - Persons involved (partial text search)
+  - Description text (partial text search)
 - **Print Direct**: Browser-based printing for paper copies
 - **Save as PDF**: Use browser's print-to-PDF for digital archiving
-- **Formatted Layout**: Clean, organized report layout optimized for both screen and print
-- **Complete Data**: All incident fields included with severity badges and metadata
+- **Professional Layout**: Clean, organized report layout optimized for both screen and print
+- **Filter Summary**: Reports display which filters were applied and total incident count
+- **Complete Data**: All incident fields included with color-coded severity badges
 
 ### 6. Data Export/Import
 - **Export to JSON**: Complete incident data with timestamps and severity
@@ -177,26 +186,38 @@ Complete CRUD operations for incident logs with the following fields:
 - Auto-creates necessary directories (instance/, uploads/)
 
 ## Recent Changes
-- **2025-11-21**: Severity levels and report generation features added
+- **2025-11-21**: Severity levels and multi-incident report generation added
   - **Severity Management**:
     - Added severity field to Incident model with dropdown selection (Low, Medium, High, Critical)
     - Implemented server-side validation using validate_severity() function
     - Color-coded severity badges throughout UI (Low=Green, Medium=Yellow, High=Orange, Critical=Red)
     - Severity column added to dashboard table
     - Severity included in all export/import operations (JSON and CSV)
-  - **Report Generation**:
-    - Created /incident/<id>/report route for generating incident reports
-    - Built incident_report.html template optimized for print and PDF
-    - Added CSS media queries for print-friendly formatting
-    - "Generate Report" button added to incident view page
-    - Reports can be printed directly or saved as PDF using browser's print function
+  - **Multi-Incident Report Generation** (Architect-reviewed and approved):
+    - Created `/generate-report` route accessible from main navigation
+    - Comprehensive filtering system with 8 filter parameters:
+      * Date range (start/end dates)
+      * Severity level dropdown (Low/Medium/High/Critical/All)
+      * Camera location (partial match with autocomplete)
+      * Reported by (partial match with autocomplete)
+      * Reviewed by (partial match with autocomplete)
+      * Persons involved (partial text search)
+      * Description text (partial text search)
+    - Built `report_filter.html` template with filter form and autocomplete datalists
+    - Built `incidents_report.html` template for multi-incident reports (intentionally standalone for clean PDF output)
+    - Print-friendly CSS with page-break-avoid for professional PDF generation
+    - Filter summary displayed on reports showing applied criteria
+    - Total incident count summary on reports
+    - Browser print-to-PDF support for archiving
   - **Updates**:
     - Updated incident_form.html with severity dropdown (required field)
     - Updated dashboard.html to display severity in table
-    - Updated incident_view.html to show severity badge
+    - Updated incident_view.html to show severity badge (removed per-incident report button)
+    - Updated base.html navigation with "Generate Report" link
     - Updated CSV export to include severity column
     - Updated JSON/CSV import to handle and validate severity
     - Added bg-orange CSS class for High severity styling
+    - Created report_filter.html and incidents_report.html templates
 
 - **2025-11-21**: User management system added and security hardening completed
   - **User Management Features** (Architect-reviewed and approved):

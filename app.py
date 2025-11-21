@@ -275,6 +275,15 @@ def edit_incident(id):
 @app.route('/generate-report', methods=['GET', 'POST'])
 @login_required
 def generate_report():
+    """
+    Multi-incident report generation with comprehensive filtering.
+    
+    GET: Display filter form with autocomplete options from existing data
+    POST: Process filters and generate print-friendly report for multiple incidents
+    
+    Note: incidents_report.html is intentionally standalone (doesn't extend base.html)
+    to ensure clean PDF output without navigation/UI elements when printing.
+    """
     if request.method == 'POST':
         # Get filter parameters from form
         start_date = request.form.get('start_date')
