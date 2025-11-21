@@ -156,6 +156,64 @@ def validate_severity(severity):
     return severity if severity in allowed_severities else 'Low'
 
 
+def validate_incident_type(incident_type):
+    allowed_types = ['Security', 'Safety']
+    return incident_type if incident_type in allowed_types else 'Security'
+
+
+def get_file_type(filename):
+    """Determine if file is image or video based on extension"""
+    ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    if ext in ['jpg', 'jpeg', 'bmp']:
+        return 'image'
+    elif ext in ['mp4', 'avi', 'mov']:
+        return 'video'
+    return 'other'
+
+
+def process_file_uploads(files_list, incident):
+    """Process multiple file uploads and create IncidentAttachment records"""
+    total_size = 0
+    max_size = 1024 * 1024 * 1024  # 1GB
+    saved_files = []
+    
+    for file in files_list:
+        if file and file.filename and allowed_file(file.filename):
+            # Check file size
+            file.seek(0, os.SEEK_END)
+            file_size = file.tell()
+            file.seek(0)  # Reset file pointer
+            
+            total_size += file_size
+            if total_size > max_size:
+                # Clean up any already saved files
+                for saved_file in saved_files:
+                    try:
+                        os.remove(os.path.join(app.config['UPLOAD_FOLDER'], saved_file))
+                    except:
+                        pass
+                raise ValueError(f"Total file size exceeds 1GB limit")
+            
+            # Save file
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            filename = f"{timestamp}_{filename}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            saved_files.append(filename)
+            
+            # Create attachment record
+            attachment = IncidentAttachment(
+                incident_id=incident.id,
+                filename=filename,
+                file_type=get_file_type(filename),
+                file_size=file_size
+            )
+            db.session.add(attachment)
+    
+    return len(saved_files)
+
+
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -253,44 +311,54 @@ def dashboard():
 @login_required
 def new_incident():
     if request.method == 'POST':
-        incident = Incident(
-            incident_datetime=datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M'),
-            camera_location=request.form.get('camera_location'),
-            severity=validate_severity(request.form.get('severity', 'Low')),
-            incident_description=request.form.get('incident_description'),
-            persons_involved=request.form.get('persons_involved'),
-            action_taken=request.form.get('action_taken'),
-            footage_reference=request.form.get('footage_reference'),
-            reported_by=request.form.get('reported_by', current_user.full_name or current_user.username),
-            reviewed_by=request.form.get('reviewed_by'),
-            remarks_outcome=request.form.get('remarks_outcome')
-        )
-        
-        if 'attachment' in request.files:
-            file = request.files['attachment']
-            if file and file.filename and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"{timestamp}_{filename}"
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                incident.attachment_filename = filename
-        
-        db.session.add(incident)
-        db.session.flush()  # Get incident.id without committing
-        
-        # Add audit log entry in same transaction with description snapshot
-        audit = AuditLog(
-            incident_id=incident.id,
-            action='created',
-            user=current_user.username,
-            details=f"Incident #{incident.id} created",
-            incident_description=incident.incident_description
-        )
-        db.session.add(audit)
-        db.session.commit()  # Single commit for both incident and audit log
-        
-        flash('Incident log created successfully!', 'success')
-        return redirect(url_for('dashboard'))
+        try:
+            incident = Incident(
+                incident_type=validate_incident_type(request.form.get('incident_type', 'Security')),
+                incident_datetime=datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M'),
+                camera_location=request.form.get('camera_location'),
+                severity=validate_severity(request.form.get('severity', 'Low')),
+                incident_description=request.form.get('incident_description'),
+                persons_involved=request.form.get('persons_involved'),
+                action_taken=request.form.get('action_taken'),
+                footage_reference=request.form.get('footage_reference'),
+                reported_by=request.form.get('reported_by', current_user.full_name or current_user.username),
+                reviewed_by=request.form.get('reviewed_by'),
+                remarks_outcome=request.form.get('remarks_outcome')
+            )
+            
+            db.session.add(incident)
+            db.session.flush()  # Get incident.id without committing
+            
+            # Handle multiple file uploads
+            if 'attachments' in request.files:
+                files = request.files.getlist('attachments')
+                if files:
+                    try:
+                        files_count = process_file_uploads(files, incident)
+                        if files_count > 0:
+                            flash(f'{files_count} file(s) uploaded successfully', 'info')
+                    except ValueError as e:
+                        db.session.rollback()
+                        flash(str(e), 'danger')
+                        return render_template('incident_form.html', incident=None)
+            
+            # Add audit log entry in same transaction with description snapshot
+            audit = AuditLog(
+                incident_id=incident.id,
+                action='created',
+                user=current_user.username,
+                details=f"Incident #{incident.id} created",
+                incident_description=incident.incident_description
+            )
+            db.session.add(audit)
+            db.session.commit()  # Single commit for incident, attachments, and audit log
+            
+            flash('Incident log created successfully!', 'success')
+            return redirect(url_for('dashboard'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating incident: {str(e)}', 'danger')
+            return render_template('incident_form.html', incident=None)
     
     return render_template('incident_form.html', incident=None)
 
@@ -308,44 +376,49 @@ def edit_incident(id):
     incident = Incident.query.get_or_404(id)
     
     if request.method == 'POST':
-        incident.incident_datetime = datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M')
-        incident.camera_location = request.form.get('camera_location')
-        incident.severity = validate_severity(request.form.get('severity', 'Low'))
-        incident.incident_description = request.form.get('incident_description')
-        incident.persons_involved = request.form.get('persons_involved')
-        incident.action_taken = request.form.get('action_taken')
-        incident.footage_reference = request.form.get('footage_reference')
-        incident.reported_by = request.form.get('reported_by')
-        incident.reviewed_by = request.form.get('reviewed_by')
-        incident.remarks_outcome = request.form.get('remarks_outcome')
-        
-        if 'attachment' in request.files:
-            file = request.files['attachment']
-            if file and file.filename and allowed_file(file.filename):
-                if incident.attachment_filename:
-                    old_file = os.path.join(app.config['UPLOAD_FOLDER'], incident.attachment_filename)
-                    if os.path.exists(old_file):
-                        os.remove(old_file)
-                
-                filename = secure_filename(file.filename)
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"{timestamp}_{filename}"
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                incident.attachment_filename = filename
-        
-        # Add audit log entry in same transaction with description snapshot
-        audit = AuditLog(
-            incident_id=incident.id,
-            action='updated',
-            user=current_user.username,
-            details=f"Incident #{incident.id} updated",
-            incident_description=incident.incident_description
-        )
-        db.session.add(audit)
-        db.session.commit()  # Single commit for both incident update and audit log
-        
-        flash('Incident log updated successfully!', 'success')
-        return redirect(url_for('view_incident', id=id))
+        try:
+            incident.incident_type = validate_incident_type(request.form.get('incident_type', 'Security'))
+            incident.incident_datetime = datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M')
+            incident.camera_location = request.form.get('camera_location')
+            incident.severity = validate_severity(request.form.get('severity', 'Low'))
+            incident.incident_description = request.form.get('incident_description')
+            incident.persons_involved = request.form.get('persons_involved')
+            incident.action_taken = request.form.get('action_taken')
+            incident.footage_reference = request.form.get('footage_reference')
+            incident.reported_by = request.form.get('reported_by')
+            incident.reviewed_by = request.form.get('reviewed_by')
+            incident.remarks_outcome = request.form.get('remarks_outcome')
+            
+            # Handle multiple file uploads
+            if 'attachments' in request.files:
+                files = request.files.getlist('attachments')
+                if files:
+                    try:
+                        files_count = process_file_uploads(files, incident)
+                        if files_count > 0:
+                            flash(f'{files_count} new file(s) uploaded successfully', 'info')
+                    except ValueError as e:
+                        db.session.rollback()
+                        flash(str(e), 'danger')
+                        return render_template('incident_form.html', incident=incident)
+            
+            # Add audit log entry in same transaction with description snapshot
+            audit = AuditLog(
+                incident_id=incident.id,
+                action='updated',
+                user=current_user.username,
+                details=f"Incident #{incident.id} updated",
+                incident_description=incident.incident_description
+            )
+            db.session.add(audit)
+            db.session.commit()  # Single commit for incident update, new attachments, and audit log
+            
+            flash('Incident log updated successfully!', 'success')
+            return redirect(url_for('view_incident', id=id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating incident: {str(e)}', 'danger')
+            return render_template('incident_form.html', incident=incident)
     
     return render_template('incident_form.html', incident=incident)
 
