@@ -446,6 +446,7 @@ def generate_report():
         # Get filter parameters from form
         start_date = request.form.get('start_date')
         end_date = request.form.get('end_date')
+        incident_type = request.form.get('incident_type')
         severity = request.form.get('severity')
         camera_location = request.form.get('camera_location')
         reported_by = request.form.get('reported_by')
@@ -463,6 +464,9 @@ def generate_report():
         if end_date:
             end_datetime = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
             query = query.filter(Incident.incident_datetime <= end_datetime)
+        
+        if incident_type and incident_type != 'All':
+            query = query.filter(Incident.incident_type == incident_type)
         
         if severity and severity != 'All':
             query = query.filter(Incident.severity == severity)
@@ -489,6 +493,7 @@ def generate_report():
                              filters={
                                  'start_date': start_date,
                                  'end_date': end_date,
+                                 'incident_type': incident_type if incident_type else 'All',
                                  'severity': severity if severity else 'All',
                                  'camera_location': camera_location,
                                  'reported_by': reported_by,
