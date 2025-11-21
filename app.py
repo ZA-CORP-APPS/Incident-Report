@@ -86,9 +86,50 @@ class Incident(db.Model):
         }
 
 
+class AuditLog(db.Model):
+    """Tracks all changes to incidents for admin audit trail"""
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.Integer, nullable=False)  # No FK constraint - allows logs to persist after incident deletion
+    action = db.Column(db.String(20), nullable=False)  # 'created', 'updated', 'deleted'
+    user = db.Column(db.String(80), nullable=False)  # Username who made the change
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    details = db.Column(db.Text)  # Optional details about what changed
+    incident_description = db.Column(db.Text)  # Snapshot of description for deleted incidents
+
+
+class AppSettings(db.Model):
+    """Stores application-wide settings like logo"""
+    id = db.Column(db.Integer, primary_key=True)
+    setting_key = db.Column(db.String(50), unique=True, nullable=False)
+    setting_value = db.Column(db.String(255))
+    
+    @staticmethod
+    def get_logo():
+        """Get the current logo filename"""
+        setting = AppSettings.query.filter_by(setting_key='logo').first()
+        return setting.setting_value if setting else None
+    
+    @staticmethod
+    def set_logo(filename):
+        """Set or update the logo filename"""
+        setting = AppSettings.query.filter_by(setting_key='logo').first()
+        if setting:
+            setting.setting_value = filename
+        else:
+            setting = AppSettings(setting_key='logo', setting_value=filename)
+            db.session.add(setting)
+        db.session.commit()
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+@app.context_processor
+def inject_logo():
+    """Make app logo available to all templates"""
+    return dict(get_app_logo=AppSettings.get_logo)
 
 
 def allowed_file(filename):
@@ -220,7 +261,19 @@ def new_incident():
                 incident.attachment_filename = filename
         
         db.session.add(incident)
-        db.session.commit()
+        db.session.flush()  # Get incident.id without committing
+        
+        # Add audit log entry in same transaction with description snapshot
+        audit = AuditLog(
+            incident_id=incident.id,
+            action='created',
+            user=current_user.username,
+            details=f"Incident #{incident.id} created",
+            incident_description=incident.incident_description
+        )
+        db.session.add(audit)
+        db.session.commit()  # Single commit for both incident and audit log
+        
         flash('Incident log created successfully!', 'success')
         return redirect(url_for('dashboard'))
     
@@ -265,7 +318,17 @@ def edit_incident(id):
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 incident.attachment_filename = filename
         
-        db.session.commit()
+        # Add audit log entry in same transaction with description snapshot
+        audit = AuditLog(
+            incident_id=incident.id,
+            action='updated',
+            user=current_user.username,
+            details=f"Incident #{incident.id} updated",
+            incident_description=incident.incident_description
+        )
+        db.session.add(audit)
+        db.session.commit()  # Single commit for both incident update and audit log
+        
         flash('Incident log updated successfully!', 'success')
         return redirect(url_for('view_incident', id=id))
     
@@ -359,13 +422,24 @@ def generate_report():
 def delete_incident(id):
     incident = Incident.query.get_or_404(id)
     
+    # Delete attachment file first (outside transaction to avoid partial state)
     if incident.attachment_filename:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], incident.attachment_filename)
         if os.path.exists(file_path):
             os.remove(file_path)
     
+    # Add audit log entry and delete incident in single transaction
+    # (No FK constraint, so audit log can reference deleted incident_id)
+    audit = AuditLog(
+        incident_id=incident.id,
+        action='deleted',
+        user=current_user.username,
+        details=f"Incident #{incident.id} deleted",
+        incident_description=incident.incident_description
+    )
+    db.session.add(audit)
     db.session.delete(incident)
-    db.session.commit()
+    db.session.commit()  # Single commit for both audit log and incident deletion
     flash('Incident log deleted successfully!', 'success')
     return redirect(url_for('dashboard'))
 
@@ -622,6 +696,70 @@ def reset_user_password(user_id):
         return redirect(url_for('manage_users'))
     
     return render_template('reset_password.html', user=user)
+
+
+@app.route('/audit-history')
+@admin_required
+def audit_history():
+    """Admin-only page to view all incident changes with timestamps and users"""
+    page = request.args.get('page', 1, type=int)
+    per_page = 50  # Show 50 logs per page
+    
+    # Get paginated audit logs (no join needed - we have description snapshot)
+    pagination = AuditLog.query.order_by(AuditLog.timestamp.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    
+    return render_template('audit_history.html', 
+                         logs=pagination.items,
+                         pagination=pagination)
+
+
+@app.route('/settings', methods=['GET', 'POST'])
+@admin_required
+def app_settings():
+    """Admin-only page to manage app settings like logo"""
+    if request.method == 'POST':
+        if 'logo' in request.files:
+            file = request.files['logo']
+            if file and file.filename:
+                # Check if file is an image
+                if allowed_file(file.filename):
+                    # Remove old logo if exists
+                    old_logo = AppSettings.get_logo()
+                    if old_logo:
+                        old_logo_path = os.path.join(app.config['UPLOAD_FOLDER'], old_logo)
+                        if os.path.exists(old_logo_path):
+                            os.remove(old_logo_path)
+                    
+                    # Save new logo
+                    filename = secure_filename(file.filename)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"logo_{timestamp}_{filename}"
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    
+                    # Update settings
+                    AppSettings.set_logo(filename)
+                    flash('Logo uploaded successfully!', 'success')
+                else:
+                    flash('Invalid file type. Please upload JPG or BMP files only.', 'danger')
+            else:
+                flash('No file selected.', 'danger')
+        
+        # Handle logo removal
+        if request.form.get('remove_logo') == 'true':
+            old_logo = AppSettings.get_logo()
+            if old_logo:
+                old_logo_path = os.path.join(app.config['UPLOAD_FOLDER'], old_logo)
+                if os.path.exists(old_logo_path):
+                    os.remove(old_logo_path)
+                AppSettings.set_logo(None)
+                flash('Logo removed successfully!', 'success')
+        
+        return redirect(url_for('app_settings'))
+    
+    current_logo = AppSettings.get_logo()
+    return render_template('settings.html', current_logo=current_logo)
 
 
 def generate_strong_password(length=16):

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}App Settings{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2><i class="bi bi-gear"></i> Application Settings</h2>
+    <p class="text-muted">Manage application-wide settings (Admin only)</p>
+    
+    <div class="card mt-4">
+        <div class="card-header bg-primary text-white">
+            <h5><i class="bi bi-image"></i> App Logo</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h6>Current Logo</h6>
+                    {% if current_logo %}
+                    <div class="border p-3 mb-3" style="background: #f8f9fa;">
+                        <img src="{{ url_for('uploaded_file', filename=current_logo) }}" 
+                             alt="Current Logo" 
+                             class="img-fluid" 
+                             style="max-height: 100px; max-width: 300px;">
+                    </div>
+                    <form method="POST" action="{{ url_for('app_settings') }}" class="mb-3">
+                        <input type="hidden" name="remove_logo" value="true">
+                        <button type="submit" class="btn btn-danger btn-sm" 
+                                onclick="return confirm('Are you sure you want to remove the current logo?')">
+                            <i class="bi bi-trash"></i> Remove Logo
+                        </button>
+                    </form>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> No logo uploaded. Using default branding.
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="col-md-6">
+                    <h6>Upload New Logo</h6>
+                    <form method="POST" action="{{ url_for('app_settings') }}" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="logo" class="form-label">Select Logo File</label>
+                            <input type="file" class="form-control" id="logo" name="logo" accept=".jpg,.jpeg,.bmp">
+                            <small class="text-muted">Supported formats: JPG, BMP (Max: 16MB)</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-upload"></i> Upload Logo
+                        </button>
+                    </form>
+                    
+                    <div class="mt-3">
+                        <small class="text-info">
+                            <i class="bi bi-lightbulb"></i> <strong>Tips:</strong>
+                            <ul class="mt-2">
+                                <li>Recommended size: 200x50 pixels</li>
+                                <li>Transparent background works best</li>
+                                <li>Logo appears in navigation bar</li>
+                            </ul>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="mt-4">
+        <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Dashboard
+        </a>
+    </div>
+</div>
+{% endblock %}
