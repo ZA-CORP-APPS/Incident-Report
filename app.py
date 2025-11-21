@@ -26,8 +26,8 @@ DB_PATH = os.path.join(BASE_DIR, 'instance', 'incidents.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DB_PATH}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
-app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'bmp'}
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1GB max upload
+app.config['ALLOWED_EXTENSIONS'] = {'jpg', 'jpeg', 'bmp', 'mp4', 'avi', 'mov'}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -51,8 +51,19 @@ class User(UserMixin, db.Model):
         return check_password_hash(self.password_hash, password)
 
 
+class IncidentAttachment(db.Model):
+    """Stores multiple file attachments for each incident"""
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.Integer, db.ForeignKey('incident.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    file_type = db.Column(db.String(10))  # image, video
+    file_size = db.Column(db.Integer)  # Size in bytes
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class Incident(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    incident_type = db.Column(db.String(20), default='Security')  # Security or Safety
     incident_datetime = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     camera_location = db.Column(db.String(200))
     severity = db.Column(db.String(20), default='Low')
@@ -63,13 +74,16 @@ class Incident(db.Model):
     reported_by = db.Column(db.String(120))
     reviewed_by = db.Column(db.String(120))
     remarks_outcome = db.Column(db.Text)
-    attachment_filename = db.Column(db.String(255))
+    attachment_filename = db.Column(db.String(255))  # Legacy field for backward compatibility
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    attachments = db.relationship('IncidentAttachment', backref='incident', lazy=True, cascade='all, delete-orphan')
     
     def to_dict(self):
         return {
             'id': self.id,
+            'incident_type': self.incident_type,
             'incident_datetime': self.incident_datetime.isoformat() if self.incident_datetime else None,
             'camera_location': self.camera_location,
             'severity': self.severity,
@@ -81,6 +95,7 @@ class Incident(db.Model):
             'reviewed_by': self.reviewed_by,
             'remarks_outcome': self.remarks_outcome,
             'attachment_filename': self.attachment_filename,
+            'attachments': [{'id': a.id, 'filename': a.filename, 'file_type': a.file_type} for a in self.attachments],
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
