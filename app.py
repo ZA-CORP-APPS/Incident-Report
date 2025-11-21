@@ -95,6 +95,11 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 
+def validate_severity(severity):
+    allowed_severities = ['Low', 'Medium', 'High', 'Critical']
+    return severity if severity in allowed_severities else 'Low'
+
+
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -195,7 +200,7 @@ def new_incident():
         incident = Incident(
             incident_datetime=datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M'),
             camera_location=request.form.get('camera_location'),
-            severity=request.form.get('severity', 'Low'),
+            severity=validate_severity(request.form.get('severity', 'Low')),
             incident_description=request.form.get('incident_description'),
             persons_involved=request.form.get('persons_involved'),
             action_taken=request.form.get('action_taken'),
@@ -237,7 +242,7 @@ def edit_incident(id):
     if request.method == 'POST':
         incident.incident_datetime = datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M')
         incident.camera_location = request.form.get('camera_location')
-        incident.severity = request.form.get('severity', 'Low')
+        incident.severity = validate_severity(request.form.get('severity', 'Low'))
         incident.incident_description = request.form.get('incident_description')
         incident.persons_involved = request.form.get('persons_involved')
         incident.action_taken = request.form.get('action_taken')
@@ -374,6 +379,7 @@ def import_data():
                     incident = Incident(
                         incident_datetime=datetime.fromisoformat(item['incident_datetime']) if item.get('incident_datetime') else datetime.utcnow(),
                         camera_location=item.get('camera_location'),
+                        severity=validate_severity(item.get('severity', 'Low')),
                         incident_description=item.get('incident_description', ''),
                         persons_involved=item.get('persons_involved'),
                         action_taken=item.get('action_taken'),
@@ -398,6 +404,7 @@ def import_data():
                         incident = Incident(
                             incident_datetime=datetime.fromisoformat(row['Incident DateTime']) if row.get('Incident DateTime') else datetime.utcnow(),
                             camera_location=row.get('Camera Location'),
+                            severity=validate_severity(row.get('Severity', 'Low')),
                             incident_description=row.get('Incident Description', ''),
                             persons_involved=row.get('Persons Involved'),
                             action_taken=row.get('Action Taken'),
