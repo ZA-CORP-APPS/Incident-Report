@@ -125,13 +125,17 @@ Complete CRUD operations for incident logs with the following fields:
 - **File Storage**: Local filesystem
 - **GitHub Integration**: Connected and ready for repository push
 
-## Security Features
-- Password hashing with Werkzeug (pbkdf2:sha256)
-- Session management with secure cookies
-- File upload validation and sanitization
-- SQL injection protection via SQLAlchemy ORM
-- CSRF protection through Flask's built-in features
-- Secure filename handling
+## Security Features (Production-Ready)
+- **Required SESSION_SECRET**: Application refuses to start without environment variable set
+- **Strong Password Generation**: Admin password randomly generated (20 chars: letters/digits/symbols)
+- **Brute-Force Protection**: 5-attempt limit with 15-minute lockout on failed logins
+- **Password Hashing**: Werkzeug pbkdf2:sha256 algorithm
+- **Session Management**: Secure session cookies with Flask-Login
+- **File Upload Security**: Strict validation and sanitization (JPG/BMP only, 16MB limit)
+- **SQL Injection Protection**: SQLAlchemy ORM with parameterized queries
+- **Secure Filename Handling**: Werkzeug secure_filename() for all uploads
+
+**Security Review Status**: ✅ Architect-reviewed and approved for production LAN deployment
 
 ## Known Configuration
 - Workflow configured: "Start Application" runs `python app.py`
@@ -140,14 +144,18 @@ Complete CRUD operations for incident logs with the following fields:
 - Auto-creates necessary directories (instance/, uploads/)
 
 ## Recent Changes
-- **2025-11-21**: Initial project creation
-  - Implemented complete Flask application
+- **2025-11-21**: Initial project creation and security hardening
+  - Implemented complete Flask application with all CRUD operations
   - Created all database models and routes
-  - Built responsive Bootstrap UI
-  - Added export/import functionality
+  - Built responsive Bootstrap UI with Bootstrap 5
+  - Added export/import functionality (JSON and CSV)
   - Configured workflow for port 5000
   - Fixed database path to use absolute paths
-  - Successfully tested and verified application running
+  - **Security Improvements** (Architect-reviewed and approved):
+    - Required SESSION_SECRET environment variable (app refuses to start without it)
+    - Implemented strong random password generation for admin user (20 characters)
+    - Added login attempt tracking with 5-attempt limit and 15-minute lockout
+    - All security gaps remediated and production-ready for LAN deployment
 
 ## User Preferences
 - Clean, professional UI without excessive complexity

@@ -1,7 +1,9 @@
 import os
 import json
 import csv
-from datetime import datetime
+import secrets
+import string
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -10,7 +12,14 @@ from werkzeug.utils import secure_filename
 from io import StringIO, BytesIO
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET', 'dev-secret-key-change-in-production')
+
+if not os.environ.get('SESSION_SECRET'):
+    raise RuntimeError(
+        "SESSION_SECRET environment variable is required for security. "
+        "Please set SESSION_SECRET before starting the application."
+    )
+
+app.config['SECRET_KEY'] = os.environ.get('SESSION_SECRET')
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'instance', 'incidents.db')
@@ -96,18 +105,41 @@ def login():
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
+        if 'login_attempts' not in session:
+            session['login_attempts'] = 0
+            session['lockout_until'] = None
+        
+        if session.get('lockout_until'):
+            lockout_time = datetime.fromisoformat(session['lockout_until'])
+            if datetime.utcnow() < lockout_time:
+                remaining = int((lockout_time - datetime.utcnow()).total_seconds() / 60)
+                flash(f'Too many failed login attempts. Please try again in {remaining} minutes.', 'danger')
+                return render_template('login.html')
+            else:
+                session['login_attempts'] = 0
+                session['lockout_until'] = None
+        
         username = request.form.get('username')
         password = request.form.get('password')
         
         user = User.query.filter_by(username=username).first()
         
         if user and user.check_password(password):
+            session['login_attempts'] = 0
+            session['lockout_until'] = None
             login_user(user)
             flash('Login successful!', 'success')
             next_page = request.args.get('next')
             return redirect(next_page or url_for('dashboard'))
         else:
-            flash('Invalid username or password', 'danger')
+            session['login_attempts'] = session.get('login_attempts', 0) + 1
+            
+            if session['login_attempts'] >= 5:
+                session['lockout_until'] = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
+                flash('Too many failed login attempts. Account locked for 15 minutes.', 'danger')
+            else:
+                remaining_attempts = 5 - session['login_attempts']
+                flash(f'Invalid username or password. {remaining_attempts} attempts remaining.', 'danger')
     
     return render_template('login.html')
 
@@ -368,16 +400,32 @@ def import_data():
     return render_template('import.html')
 
 
+def generate_strong_password(length=16):
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(secrets.choice(alphabet) for _ in range(length))
+    return password
+
+
 def init_db():
     with app.app_context():
         db.create_all()
         
         if not User.query.filter_by(username='admin').first():
+            admin_password = generate_strong_password(20)
             admin = User(username='admin', full_name='Administrator')
-            admin.set_password('admin123')
+            admin.set_password(admin_password)
             db.session.add(admin)
             db.session.commit()
-            print('Default admin user created (username: admin, password: admin123)')
+            
+            print('=' * 80)
+            print('IMPORTANT: Default admin user created')
+            print('=' * 80)
+            print(f'Username: admin')
+            print(f'Password: {admin_password}')
+            print('=' * 80)
+            print('SECURITY WARNING: Save this password now! It will not be shown again.')
+            print('Please change this password immediately after first login.')
+            print('=' * 80)
 
 
 if __name__ == '__main__':

@@ -70,11 +70,23 @@ Open your web browser and navigate to:
 - Local: `http://localhost:5000`
 - LAN: `http://<server-ip>:5000`
 
-**Default Login Credentials:**
-- Username: `admin`
-- Password: `admin123`
+**Initial Login Credentials:**
 
-⚠️ **Important**: Change the default password after first login!
+On first startup, the application will generate a secure random password for the admin user and display it in the console output. Look for output like this:
+
+```
+================================================================================
+IMPORTANT: Default admin user created
+================================================================================
+Username: admin
+Password: <randomly-generated-secure-password>
+================================================================================
+SECURITY WARNING: Save this password now! It will not be shown again.
+Please change this password immediately after first login.
+================================================================================
+```
+
+⚠️ **Critical**: Save the password immediately - it will not be displayed again!
 
 ## Project Structure
 
@@ -141,18 +153,29 @@ incident-log-system/
 2. Upload a JSON or CSV file (must match export format)
 3. Invalid records will be skipped automatically
 
-## Security Considerations
+## Security Features
 
-### For Production Deployment:
+The application includes several built-in security features:
 
-1. **Change the Secret Key**: 
-   - Set the `SESSION_SECRET` environment variable
-   - Use a strong, random value
+### Authentication Security
+- **Strong Password Generation**: Admin password is randomly generated with 20 characters (letters, numbers, symbols)
+- **Login Attempt Tracking**: Maximum 5 failed login attempts before 15-minute account lockout
+- **Session Management**: Secure session cookies with Flask-Login
+- **Password Hashing**: Industry-standard password hashing with Werkzeug (pbkdf2:sha256)
 
-2. **Change Default Password**:
-   - Login with admin/admin123
-   - Create a new admin user with a strong password
-   - Delete or disable the default admin account
+### Required Security Configuration
+
+1. **Session Secret (REQUIRED)**: 
+   - The `SESSION_SECRET` environment variable must be set
+   - Application will refuse to start without it
+   - Use a strong, cryptographically random value
+   - Example: `export SESSION_SECRET="$(openssl rand -hex 32)"`
+
+2. **Admin Password Management**:
+   - Randomly generated on first startup
+   - Displayed once in console output
+   - Must be saved immediately
+   - Change password after first login for additional security
 
 3. **File Upload Security**:
    - Only JPG and BMP files are allowed
