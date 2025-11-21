@@ -55,6 +55,7 @@ class Incident(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     incident_datetime = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     camera_location = db.Column(db.String(200))
+    severity = db.Column(db.String(20), default='Low')
     incident_description = db.Column(db.Text, nullable=False)
     persons_involved = db.Column(db.Text)
     action_taken = db.Column(db.Text)
@@ -71,6 +72,7 @@ class Incident(db.Model):
             'id': self.id,
             'incident_datetime': self.incident_datetime.isoformat() if self.incident_datetime else None,
             'camera_location': self.camera_location,
+            'severity': self.severity,
             'incident_description': self.incident_description,
             'persons_involved': self.persons_involved,
             'action_taken': self.action_taken,
@@ -193,6 +195,7 @@ def new_incident():
         incident = Incident(
             incident_datetime=datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M'),
             camera_location=request.form.get('camera_location'),
+            severity=request.form.get('severity', 'Low'),
             incident_description=request.form.get('incident_description'),
             persons_involved=request.form.get('persons_involved'),
             action_taken=request.form.get('action_taken'),
@@ -234,6 +237,7 @@ def edit_incident(id):
     if request.method == 'POST':
         incident.incident_datetime = datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M')
         incident.camera_location = request.form.get('camera_location')
+        incident.severity = request.form.get('severity', 'Low')
         incident.incident_description = request.form.get('incident_description')
         incident.persons_involved = request.form.get('persons_involved')
         incident.action_taken = request.form.get('action_taken')
