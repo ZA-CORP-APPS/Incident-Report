@@ -47,13 +47,30 @@ git clone <repository-url>
 cd <repository-directory>
 ```
 
-### 2. Install Python Dependencies
+### 2. Create a Virtual Environment (Ubuntu 22.04+)
+
+Modern Ubuntu requires virtual environments for Python packages:
+
+```bash
+# Install python3-venv if not already installed
+sudo apt install python3-full python3-venv
+
+# Create a virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+source venv/bin/activate
+```
+
+### 3. Install Python Dependencies
+
+With the virtual environment activated:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Run the Application
+### 4. Run the Application
 
 ```bash
 python app.py
@@ -64,7 +81,7 @@ The application will:
 - Initialize the default admin user
 - Start the web server on `http://0.0.0.0:5000`
 
-### 4. Access the Application
+### 5. Access the Application
 
 Open your web browser and navigate to:
 - Local: `http://localhost:5000`
