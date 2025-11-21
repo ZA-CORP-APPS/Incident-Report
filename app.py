@@ -291,8 +291,15 @@ def logout():
 @login_required
 def dashboard():
     search_query = request.args.get('search', '')
-    incidents = Incident.query.order_by(Incident.incident_datetime.desc())
+    sort_order = request.args.get('sort', 'asc')  # asc = earliest first (default), desc = latest first
     
+    # Build query with sorting
+    if sort_order == 'desc':
+        incidents = Incident.query.order_by(Incident.incident_datetime.desc())
+    else:
+        incidents = Incident.query.order_by(Incident.incident_datetime.asc())
+    
+    # Apply search filter
     if search_query:
         incidents = incidents.filter(
             db.or_(
@@ -304,7 +311,7 @@ def dashboard():
         )
     
     incidents = incidents.all()
-    return render_template('dashboard.html', incidents=incidents, search_query=search_query)
+    return render_template('dashboard.html', incidents=incidents, search_query=search_query, sort_order=sort_order)
 
 
 @app.route('/incident/new', methods=['GET', 'POST'])

@@ -19,18 +19,29 @@
         <div class="col-md-6">
             <form method="GET" action="{{ url_for('dashboard') }}" class="input-group">
                 <input type="text" class="form-control" name="search" placeholder="Search incidents..." value="{{ search_query }}">
+                <input type="hidden" name="sort" value="{{ sort_order }}">
                 <button class="btn btn-outline-secondary" type="submit">
                     <i class="bi bi-search"></i> Search
                 </button>
                 {% if search_query %}
-                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-danger">
+                <a href="{{ url_for('dashboard', sort=sort_order) }}" class="btn btn-outline-danger">
                     <i class="bi bi-x-circle"></i> Clear
                 </a>
                 {% endif %}
             </form>
         </div>
         <div class="col-md-6 text-end">
-            <span class="text-muted">Total incidents: {{ incidents|length }}</span>
+            <div class="btn-group me-3" role="group">
+                <a href="{{ url_for('dashboard', search=search_query, sort='asc') }}" 
+                   class="btn btn-sm {% if sort_order == 'asc' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    <i class="bi bi-sort-up"></i> Earliest First
+                </a>
+                <a href="{{ url_for('dashboard', search=search_query, sort='desc') }}" 
+                   class="btn btn-sm {% if sort_order == 'desc' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                    <i class="bi bi-sort-down"></i> Latest First
+                </a>
+            </div>
+            <span class="text-muted">Total: {{ incidents|length }}</span>
         </div>
     </div>
 
@@ -42,6 +53,7 @@
                     <thead>
                         <tr>
                             <th>ID</th>
+                            <th>Type</th>
                             <th>Date & Time</th>
                             <th>Camera Location</th>
                             <th>Severity</th>
@@ -55,6 +67,13 @@
                         {% for incident in incidents %}
                         <tr>
                             <td><strong>#{{ incident.id }}</strong></td>
+                            <td>
+                                {% if incident.incident_type == 'Security' %}
+                                <span class="badge bg-primary">🔐 Security</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">⚠️ Safety</span>
+                                {% endif %}
+                            </td>
                             <td>{{ incident.incident_datetime.strftime('%Y-%m-%d %H:%M') if incident.incident_datetime else 'N/A' }}</td>
                             <td>{{ incident.camera_location or 'N/A' }}</td>
                             <td>
@@ -67,7 +86,7 @@
                                     {{ incident.severity or 'Low' }}
                                 </span>
                             </td>
-                            <td>{{ incident.incident_description[:80] }}{% if incident.incident_description|length > 80 %}...{% endif %}</td>
+                            <td>{{ incident.incident_description[:60] }}{% if incident.incident_description|length > 60 %}...{% endif %}</td>
                             <td>{{ incident.reported_by or 'N/A' }}</td>
                             <td>
                                 {% if incident.reviewed_by %}
