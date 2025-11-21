@@ -512,6 +512,97 @@ def generate_report():
     return render_template('report_filter.html', locations=locations, reporters=reporters, reviewers=reviewers)
 
 
+@app.route('/analytics')
+@login_required
+def analytics():
+    """Analytics dashboard with charts and statistics"""
+    from collections import defaultdict
+    from datetime import timedelta
+    
+    # Get all incidents
+    incidents = Incident.query.all()
+    total_incidents = len(incidents)
+    
+    # Statistics by incident type
+    security_count = sum(1 for i in incidents if i.incident_type == 'Security')
+    safety_count = sum(1 for i in incidents if i.incident_type == 'Safety')
+    
+    # Statistics by severity
+    severity_stats = {
+        'Low': sum(1 for i in incidents if i.severity == 'Low'),
+        'Medium': sum(1 for i in incidents if i.severity == 'Medium'),
+        'High': sum(1 for i in incidents if i.severity == 'High'),
+        'Critical': sum(1 for i in incidents if i.severity == 'Critical')
+    }
+    
+    # Statistics by review status
+    reviewed_count = sum(1 for i in incidents if i.reviewed_by)
+    pending_count = total_incidents - reviewed_count
+    
+    # Incidents by month (last 12 months)
+    incidents_by_month = defaultdict(int)
+    incidents_by_month_type = defaultdict(lambda: {'Security': 0, 'Safety': 0})
+    
+    now = datetime.now()
+    for i in range(12):
+        month_date = now - timedelta(days=30 * i)
+        month_key = month_date.strftime('%Y-%m')
+        incidents_by_month[month_key] = 0
+        incidents_by_month_type[month_key] = {'Security': 0, 'Safety': 0}
+    
+    for incident in incidents:
+        if incident.incident_datetime:
+            month_key = incident.incident_datetime.strftime('%Y-%m')
+            if month_key in incidents_by_month:
+                incidents_by_month[month_key] += 1
+                incident_type = incident.incident_type or 'Security'
+                incidents_by_month_type[month_key][incident_type] += 1
+    
+    # Sort months chronologically
+    sorted_months = sorted(incidents_by_month.keys())
+    month_labels = [datetime.strptime(m, '%Y-%m').strftime('%b %Y') for m in sorted_months]
+    month_values = [incidents_by_month[m] for m in sorted_months]
+    month_security = [incidents_by_month_type[m]['Security'] for m in sorted_months]
+    month_safety = [incidents_by_month_type[m]['Safety'] for m in sorted_months]
+    
+    # Incidents by camera location (top 10)
+    location_stats = defaultdict(int)
+    for incident in incidents:
+        if incident.camera_location:
+            location_stats[incident.camera_location] += 1
+    
+    top_locations = sorted(location_stats.items(), key=lambda x: x[1], reverse=True)[:10]
+    location_labels = [loc[0] for loc in top_locations]
+    location_values = [loc[1] for loc in top_locations]
+    
+    # Incidents by year
+    year_stats = defaultdict(int)
+    for incident in incidents:
+        if incident.incident_datetime:
+            year = incident.incident_datetime.year
+            year_stats[year] += 1
+    
+    sorted_years = sorted(year_stats.keys())
+    year_labels = [str(y) for y in sorted_years]
+    year_values = [year_stats[y] for y in sorted_years]
+    
+    return render_template('analytics.html',
+                         total_incidents=total_incidents,
+                         security_count=security_count,
+                         safety_count=safety_count,
+                         severity_stats=severity_stats,
+                         reviewed_count=reviewed_count,
+                         pending_count=pending_count,
+                         month_labels=month_labels,
+                         month_values=month_values,
+                         month_security=month_security,
+                         month_safety=month_safety,
+                         location_labels=location_labels,
+                         location_values=location_values,
+                         year_labels=year_labels,
+                         year_values=year_values)
+
+
 @app.route('/incident/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_incident(id):

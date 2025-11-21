@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Incident Log System{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-graph-up"></i> Analytics Dashboard</h2>
+            <p class="text-muted">Comprehensive incident statistics and trends</p>
+        </div>
+    </div>
+
+    <!-- Summary Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-list-check"></i> Total Incidents</h6>
+                    <h2 class="display-4">{{ total_incidents }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-shield-lock"></i> Security Incidents</h6>
+                    <h2 class="display-4">{{ security_count }}</h2>
+                    <small>{{ (security_count / total_incidents * 100) | round(1) if total_incidents > 0 else 0 }}% of total</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-exclamation-triangle"></i> Safety Incidents</h6>
+                    <h2 class="display-4">{{ safety_count }}</h2>
+                    <small>{{ (safety_count / total_incidents * 100) | round(1) if total_incidents > 0 else 0 }}% of total</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-check-circle"></i> Reviewed</h6>
+                    <h2 class="display-4">{{ reviewed_count }}</h2>
+                    <small>{{ pending_count }} pending review</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-calendar3"></i> Incidents by Month (Last 12 Months)</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="monthChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-pie-chart"></i> Incidents by Type</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="typeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-bar-chart"></i> Incidents by Severity</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="severityChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-clipboard-check"></i> Review Status</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 3 -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-camera-video"></i> Top 10 Camera Locations</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="locationChart"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-calendar-range"></i> Incidents by Year</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="yearChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Type Breakdown -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-graph-up-arrow"></i> Monthly Trends: Security vs Safety</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="monthlyTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js Library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<script>
+// Chart configurations
+const chartColors = {
+    primary: '#0d6efd',
+    success: '#198754',
+    warning: '#ffc107',
+    danger: '#dc3545',
+    info: '#0dcaf0',
+    orange: '#fd7e14',
+    purple: '#6f42c1',
+    cyan: '#17a2b8'
+};
+
+// 1. Monthly Incidents Chart
+const monthCtx = document.getElementById('monthChart').getContext('2d');
+new Chart(monthCtx, {
+    type: 'line',
+    data: {
+        labels: {{ month_labels | tojson }},
+        datasets: [{
+            label: 'Total Incidents',
+            data: {{ month_values | tojson }},
+            borderColor: chartColors.primary,
+            backgroundColor: chartColors.primary + '33',
+            fill: true,
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: true },
+            title: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+    }
+});
+
+// 2. Incident Type Pie Chart
+const typeCtx = document.getElementById('typeChart').getContext('2d');
+new Chart(typeCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Security', 'Safety'],
+        datasets: [{
+            data: [{{ security_count }}, {{ safety_count }}],
+            backgroundColor: [chartColors.primary, chartColors.warning],
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'bottom' }
+        }
+    }
+});
+
+// 3. Severity Bar Chart
+const severityCtx = document.getElementById('severityChart').getContext('2d');
+new Chart(severityCtx, {
+    type: 'bar',
+    data: {
+        labels: ['Low', 'Medium', 'High', 'Critical'],
+        datasets: [{
+            label: 'Incidents',
+            data: [
+                {{ severity_stats['Low'] }},
+                {{ severity_stats['Medium'] }},
+                {{ severity_stats['High'] }},
+                {{ severity_stats['Critical'] }}
+            ],
+            backgroundColor: [
+                chartColors.success,
+                chartColors.warning,
+                chartColors.orange,
+                chartColors.danger
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+    }
+});
+
+// 4. Review Status Chart
+const statusCtx = document.getElementById('statusChart').getContext('2d');
+new Chart(statusCtx, {
+    type: 'pie',
+    data: {
+        labels: ['Reviewed', 'Pending Review'],
+        datasets: [{
+            data: [{{ reviewed_count }}, {{ pending_count }}],
+            backgroundColor: [chartColors.success, chartColors.warning],
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'bottom' }
+        }
+    }
+});
+
+// 5. Location Chart (Horizontal Bar)
+const locationCtx = document.getElementById('locationChart').getContext('2d');
+new Chart(locationCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ location_labels | tojson }},
+        datasets: [{
+            label: 'Incidents',
+            data: {{ location_values | tojson }},
+            backgroundColor: chartColors.info
+        }]
+    },
+    options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            x: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+    }
+});
+
+// 6. Year Chart
+const yearCtx = document.getElementById('yearChart').getContext('2d');
+new Chart(yearCtx, {
+    type: 'bar',
+    data: {
+        labels: {{ year_labels | tojson }},
+        datasets: [{
+            label: 'Incidents',
+            data: {{ year_values | tojson }},
+            backgroundColor: chartColors.purple
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: false }
+        },
+        scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+    }
+});
+
+// 7. Monthly Type Breakdown (Stacked Line Chart)
+const monthlyTypeCtx = document.getElementById('monthlyTypeChart').getContext('2d');
+new Chart(monthlyTypeCtx, {
+    type: 'line',
+    data: {
+        labels: {{ month_labels | tojson }},
+        datasets: [{
+            label: 'Security',
+            data: {{ month_security | tojson }},
+            borderColor: chartColors.primary,
+            backgroundColor: chartColors.primary + '33',
+            fill: true,
+            tension: 0.4
+        }, {
+            label: 'Safety',
+            data: {{ month_safety | tojson }},
+            borderColor: chartColors.warning,
+            backgroundColor: chartColors.warning + '33',
+            fill: true,
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'top' }
+        },
+        scales: {
+            y: { 
+                beginAtZero: true,
+                stacked: false,
+                ticks: { stepSize: 1 }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
