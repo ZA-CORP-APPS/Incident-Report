@@ -34,6 +34,16 @@
                             <td><strong>#{{ incident.id }}</strong></td>
                         </tr>
                         <tr>
+                            <th>Incident Type:</th>
+                            <td>
+                                {% if incident.incident_type == 'Security' %}
+                                <span class="badge bg-primary">🔐 Security</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">⚠️ Safety</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
                             <th>Date & Time:</th>
                             <td>{{ incident.incident_datetime.strftime('%Y-%m-%d %H:%M:%S') if incident.incident_datetime else 'N/A' }}</td>
                         </tr>
@@ -105,20 +115,64 @@
         </div>
 
         <div class="col-md-4">
-            {% if incident.attachment_filename %}
+            {% if incident.attachments or incident.attachment_filename %}
             <div class="card mb-3">
-                <div class="card-header">
-                    <h5><i class="bi bi-image"></i> Attachment</h5>
-                </div>
-                <div class="card-body text-center">
-                    <img src="{{ url_for('uploaded_file', filename=incident.attachment_filename) }}" 
-                         class="img-fluid rounded mb-2" alt="Incident attachment">
-                    <br>
-                    <a href="{{ url_for('uploaded_file', filename=incident.attachment_filename) }}" 
-                       target="_blank" class="btn btn-sm btn-primary">
-                        <i class="bi bi-download"></i> Download
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-paperclip"></i> Attachments</h5>
+                    {% if incident.attachments|length > 1 or (incident.attachment_filename and incident.attachments|length > 0) %}
+                    <a href="{{ url_for('download_incident_files', id=incident.id) }}" class="btn btn-sm btn-success">
+                        <i class="bi bi-download"></i> Download All (ZIP)
                     </a>
-                    <p class="text-muted small mt-2">{{ incident.attachment_filename }}</p>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if incident.attachments %}
+                        {% for attachment in incident.attachments %}
+                        <div class="mb-3 pb-3 border-bottom">
+                            {% if attachment.file_type == 'image' %}
+                            <div class="text-center mb-2">
+                                <img src="{{ url_for('uploaded_file', filename=attachment.filename) }}" 
+                                     class="img-fluid rounded" alt="Incident image"
+                                     style="max-height: 200px; object-fit: cover;">
+                            </div>
+                            {% elif attachment.file_type == 'video' %}
+                            <div class="text-center mb-2">
+                                <video controls class="w-100 rounded" style="max-height: 200px;">
+                                    <source src="{{ url_for('uploaded_file', filename=attachment.filename) }}" type="video/{{ attachment.filename.split('.')[-1] }}">
+                                    Your browser does not support the video tag.
+                                </video>
+                            </div>
+                            {% endif %}
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    {% if attachment.file_type == 'image' %}
+                                    <i class="bi bi-image text-primary"></i>
+                                    {% else %}
+                                    <i class="bi bi-camera-video text-danger"></i>
+                                    {% endif %}
+                                    <small>{{ attachment.filename }}</small><br>
+                                    <small class="text-muted">{{ (attachment.file_size / 1024 / 1024) | round(2) }} MB</small>
+                                </div>
+                                <a href="{{ url_for('uploaded_file', filename=attachment.filename) }}" 
+                                   target="_blank" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-download"></i>
+                                </a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% elif incident.attachment_filename %}
+                    <div class="text-center">
+                        <p class="text-muted"><small>Legacy Attachment</small></p>
+                        <img src="{{ url_for('uploaded_file', filename=incident.attachment_filename) }}" 
+                             class="img-fluid rounded mb-2" alt="Incident attachment">
+                        <br>
+                        <a href="{{ url_for('uploaded_file', filename=incident.attachment_filename) }}" 
+                           target="_blank" class="btn btn-sm btn-primary">
+                            <i class="bi bi-download"></i> Download
+                        </a>
+                        <p class="text-muted small mt-2">{{ incident.attachment_filename }}</p>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
             {% endif %}

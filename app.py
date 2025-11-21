@@ -517,14 +517,26 @@ def generate_report():
 def delete_incident(id):
     incident = Incident.query.get_or_404(id)
     
-    # Delete attachment file first (outside transaction to avoid partial state)
+    # Delete all attachment files first (outside transaction)
+    for attachment in incident.attachments:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], attachment.filename)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                flash(f'Warning: Could not delete file {attachment.filename}', 'warning')
+    
+    # Delete legacy attachment if exists
     if incident.attachment_filename:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], incident.attachment_filename)
         if os.path.exists(file_path):
-            os.remove(file_path)
+            try:
+                os.remove(file_path)
+            except Exception as e:
+                flash(f'Warning: Could not delete legacy attachment', 'warning')
     
     # Add audit log entry and delete incident in single transaction
-    # (No FK constraint, so audit log can reference deleted incident_id)
+    # (Attachments will be cascade deleted automatically due to foreign key relationship)
     audit = AuditLog(
         incident_id=incident.id,
         action='deleted',
@@ -544,6 +556,40 @@ def delete_incident(id):
 def uploaded_file(filename):
     from flask import send_from_directory
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
+@app.route('/incident/<int:id>/download-files')
+@login_required
+def download_incident_files(id):
+    """Download all incident attachments as a ZIP file"""
+    import zipfile
+    from io import BytesIO
+    
+    incident = Incident.query.get_or_404(id)
+    
+    # Create a BytesIO object to store the ZIP in memory
+    memory_file = BytesIO()
+    
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Add new attachments
+        for attachment in incident.attachments:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], attachment.filename)
+            if os.path.exists(file_path):
+                zf.write(file_path, attachment.filename)
+        
+        # Add legacy attachment if exists
+        if incident.attachment_filename:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], incident.attachment_filename)
+            if os.path.exists(file_path):
+                zf.write(file_path, incident.attachment_filename)
+    
+    memory_file.seek(0)
+    
+    zip_filename = f"incident_{incident.id}_attachments.zip"
+    return send_file(memory_file, 
+                     mimetype='application/zip',
+                     as_attachment=True,
+                     download_name=zip_filename)
 
 
 @app.route('/export/json')
