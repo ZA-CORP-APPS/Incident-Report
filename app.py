@@ -707,14 +707,15 @@ def export_csv():
     writer = csv.writer(output)
     
     writer.writerow([
-        'ID', 'Incident DateTime', 'Camera Location', 'Severity', 'Incident Description',
+        'ID', 'Incident Type', 'Incident DateTime', 'Camera Location', 'Severity', 'Incident Description',
         'Persons Involved', 'Action Taken', 'Footage Reference', 'Reported By',
-        'Reviewed By', 'Remarks/Outcome', 'Attachment Filename', 'Created At', 'Updated At'
+        'Reviewed By', 'Remarks/Outcome', 'Attachment Count', 'Attachment Filename', 'Created At', 'Updated At'
     ])
     
     for incident in incidents:
         writer.writerow([
             incident.id,
+            incident.incident_type or 'Security',
             incident.incident_datetime.isoformat() if incident.incident_datetime else '',
             incident.camera_location or '',
             incident.severity or 'Low',
@@ -725,6 +726,7 @@ def export_csv():
             incident.reported_by or '',
             incident.reviewed_by or '',
             incident.remarks_outcome or '',
+            len(incident.attachments),
             incident.attachment_filename or '',
             incident.created_at.isoformat() if incident.created_at else '',
             incident.updated_at.isoformat() if incident.updated_at else ''
@@ -758,6 +760,7 @@ def import_data():
                 
                 for item in data:
                     incident = Incident(
+                        incident_type=item.get('incident_type', 'Security'),
                         incident_datetime=datetime.fromisoformat(item['incident_datetime']) if item.get('incident_datetime') else datetime.utcnow(),
                         camera_location=item.get('camera_location'),
                         severity=validate_severity(item.get('severity', 'Low')),
@@ -783,6 +786,7 @@ def import_data():
                 for row in csv_reader:
                     try:
                         incident = Incident(
+                            incident_type=row.get('Incident Type', 'Security'),
                             incident_datetime=datetime.fromisoformat(row['Incident DateTime']) if row.get('Incident DateTime') else datetime.utcnow(),
                             camera_location=row.get('Camera Location'),
                             severity=validate_severity(row.get('Severity', 'Low')),
