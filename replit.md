@@ -19,11 +19,24 @@ Key architectural decisions and features include:
 - **Incident Management**: Full CRUD operations for incidents, including auto-generated IDs, timestamping, camera location, severity, description, persons involved, actions taken, footage reference, reporting/reviewing personnel, remarks, and secure file attachments (JPG/BMP, max 16MB).
 - **Reporting**: Multi-incident report generation with extensive filtering capabilities (date range, severity, camera location, reported by, reviewed by, persons involved, description). Reports are optimized for print and PDF export with a professional layout and filter summary.
 - **Data Handling**: Export/import functionality for incident data in JSON and CSV formats, with server-side validation for data integrity during import.
-- **Audit Logging**: Admin-only audit history logging for all incident creation, update, and deletion actions, including user, timestamp, action type, and incident details.
-- **Application Settings**: Admin-only functionality to upload an app-wide logo, displayed in the navigation bar.
+- **Audit Logging**: Comprehensive admin-only audit history system with transactional integrity. Tracks all incident creation, update, and deletion actions with user, timestamp, action type, and incident details. Key design decisions: (1) AuditLog.incident_id has NO foreign key constraint, allowing logs to persist after incident deletion for compliance; (2) Description snapshots stored in audit logs for deleted incidents; (3) Single-transaction commits ensure either both audit log and incident change succeed or both fail; (4) Pagination (50 logs per page) prevents performance issues; (5) File deletion happens before DB transaction (acceptable since filesystem operations cannot be rolled back).
+- **Application Settings**: Admin-only functionality to upload an app-wide logo (JPG/BMP), displayed in the navigation bar at 40px height. Automatic cleanup removes old logo files when uploading new ones. Settings stored in AppSettings model using key-value pairs. Context processor makes logo available across all templates.
 - **File Management**: Secure file uploads with validation, sanitization, and timestamped filenames.
+
+## Recent Changes (2025-11-21)
+- **Audit Logging System**: Added comprehensive audit history tracking all incident changes with transactional integrity
+- **Logo Upload Feature**: Added admin-only app-wide logo upload with automatic file cleanup
+- **Navigation Updates**: Added "Audit History" and "Settings" links for admin users
+- **Transactional Integrity**: Fixed all audit logging to use single-transaction commits for atomicity
+- **FK Constraint Removal**: Removed foreign key constraint from AuditLog.incident_id to allow logs to persist after incident deletion
+- **Description Snapshots**: Added incident_description field to audit logs for deleted incidents
+- **Pagination**: Added pagination to audit history (50 logs per page) for performance
 
 ## External Dependencies
 - **Python Libraries**: Listed in `requirements.txt` (e.g., Flask, SQLAlchemy, Flask-Login, Werkzeug).
 - **Frontend Framework**: Bootstrap 5 (loaded via CDN).
 - **Database**: SQLite (built-in, file-based).
+
+## Admin Credentials
+- **Username**: admin
+- **Password**: -w]aa#,dM)!J#<4=7E~f
