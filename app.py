@@ -42,6 +42,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     full_name = db.Column(db.String(120))
+    is_admin = db.Column(db.Boolean, default=False)
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -90,6 +91,19 @@ def load_user(user_id):
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+
+def admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('login'))
+        if not current_user.is_admin:
+            flash('Access denied. Admin privileges required.', 'danger')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 @app.route('/')
@@ -400,6 +414,118 @@ def import_data():
     return render_template('import.html')
 
 
+@app.route('/users')
+@admin_required
+def manage_users():
+    users = User.query.all()
+    return render_template('users.html', users=users)
+
+
+@app.route('/users/add', methods=['GET', 'POST'])
+@admin_required
+def add_user():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        full_name = request.form.get('full_name')
+        password = request.form.get('password')
+        is_admin = request.form.get('is_admin') == 'on'
+        
+        if User.query.filter_by(username=username).first():
+            flash(f'Username "{username}" already exists. Please choose a different username.', 'danger')
+            return render_template('add_user.html')
+        
+        if len(password) < 8:
+            flash('Password must be at least 8 characters long.', 'danger')
+            return render_template('add_user.html')
+        
+        new_user = User(username=username, full_name=full_name, is_admin=is_admin)
+        new_user.set_password(password)
+        db.session.add(new_user)
+        db.session.commit()
+        
+        flash(f'User "{username}" created successfully!', 'success')
+        return redirect(url_for('manage_users'))
+    
+    return render_template('add_user.html')
+
+
+@app.route('/users/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if user.id == current_user.id:
+        flash('You cannot delete your own account.', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    if user.username == 'admin':
+        flash('Cannot delete the primary admin account.', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    username = user.username
+    db.session.delete(user)
+    db.session.commit()
+    flash(f'User "{username}" has been deleted.', 'success')
+    return redirect(url_for('manage_users'))
+
+
+@app.route('/change-password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    if request.method == 'POST':
+        current_password = request.form.get('current_password')
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if not current_user.check_password(current_password):
+            flash('Current password is incorrect.', 'danger')
+            return render_template('change_password.html')
+        
+        if len(new_password) < 8:
+            flash('New password must be at least 8 characters long.', 'danger')
+            return render_template('change_password.html')
+        
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'danger')
+            return render_template('change_password.html')
+        
+        current_user.set_password(new_password)
+        db.session.commit()
+        flash('Your password has been changed successfully!', 'success')
+        return redirect(url_for('dashboard'))
+    
+    return render_template('change_password.html')
+
+
+@app.route('/users/<int:user_id>/reset-password', methods=['GET', 'POST'])
+@admin_required
+def reset_user_password(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if user.is_admin and user.id != current_user.id:
+        flash('You cannot reset the password of another admin user.', 'danger')
+        return redirect(url_for('manage_users'))
+    
+    if request.method == 'POST':
+        new_password = request.form.get('new_password')
+        confirm_password = request.form.get('confirm_password')
+        
+        if len(new_password) < 8:
+            flash('Password must be at least 8 characters long.', 'danger')
+            return render_template('reset_password.html', user=user)
+        
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return render_template('reset_password.html', user=user)
+        
+        user.set_password(new_password)
+        db.session.commit()
+        flash(f'Password for user "{user.username}" has been reset successfully!', 'success')
+        return redirect(url_for('manage_users'))
+    
+    return render_template('reset_password.html', user=user)
+
+
 def generate_strong_password(length=16):
     alphabet = string.ascii_letters + string.digits + string.punctuation
     password = ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -412,7 +538,7 @@ def init_db():
         
         if not User.query.filter_by(username='admin').first():
             admin_password = generate_strong_password(20)
-            admin = User(username='admin', full_name='Administrator')
+            admin = User(username='admin', full_name='Administrator', is_admin=True)
             admin.set_password(admin_password)
             db.session.add(admin)
             db.session.commit()
