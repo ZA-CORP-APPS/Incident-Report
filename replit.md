@@ -27,7 +27,11 @@ incident-log-system/
 │   ├── dashboard.html    # Main incident list view
 │   ├── incident_form.html # Create/edit incident form
 │   ├── incident_view.html # View incident details
-│   └── import.html       # Data import page
+│   ├── import.html       # Data import page
+│   ├── users.html        # User management (admin only)
+│   ├── add_user.html     # Add new user form (admin only)
+│   ├── change_password.html # Change own password
+│   └── reset_password.html # Reset user password (admin only)
 └── static/                # Static assets
     └── css/
         └── style.css     # Custom CSS styling
@@ -35,11 +39,26 @@ incident-log-system/
 
 ## Core Features Implemented
 
-### 1. User Authentication
+### 1. User Authentication & Management
 - Secure login system with username/password
 - Session management with Flask-Login
 - Password hashing using Werkzeug
-- Default admin account: username `admin`, password `admin123`
+- Role-based access control (Admin/User roles)
+- **Admin-Only User Management**:
+  - Add new users with username, full name, password, and role assignment
+  - View all users with their roles (Admin/User badges)
+  - Delete non-admin users (admins are protected from deletion)
+  - Reset passwords for non-admin users
+- **Password Management**:
+  - All users can change their own password (requires current password)
+  - Password requirements: minimum 8 characters
+  - Password confirmation validation
+- **Security Controls**:
+  - Admins cannot delete themselves or other admin users
+  - Admins cannot reset passwords of other admin users
+  - Admin users must use self-service password change
+  - Protected admin accounts shown with "Protected" badge in UI
+- Default admin account created on first launch with randomly generated strong password (shown in console)
 
 ### 2. Incident Management
 Complete CRUD operations for incident logs with the following fields:
@@ -93,6 +112,9 @@ Complete CRUD operations for incident logs with the following fields:
 - `username` (String, Unique, Required)
 - `password_hash` (String, Required)
 - `full_name` (String)
+- `is_admin` (Boolean, Default: False)
+- `failed_login_attempts` (Integer, Default: 0)
+- `locked_until` (DateTime, Nullable)
 
 ### Incident Table
 - `id` (Integer, Primary Key)
@@ -144,6 +166,26 @@ Complete CRUD operations for incident logs with the following fields:
 - Auto-creates necessary directories (instance/, uploads/)
 
 ## Recent Changes
+- **2025-11-21**: User management system added and security hardening completed
+  - **User Management Features** (Architect-reviewed and approved):
+    - Added is_admin field to User model for role-based access control
+    - Created admin_required decorator for protecting admin-only routes
+    - Implemented add user functionality (admin only) with role assignment
+    - Implemented user listing with role badges and action buttons
+    - Implemented delete user functionality (prevents deleting admins)
+    - Implemented password change for all users (requires current password)
+    - Implemented admin password reset for non-admin users only
+    - Updated navigation menu with "Users" link (admin only) and "Change Password" option
+    - Added admin badge display in navigation menu
+    - Created 4 new templates: users.html, add_user.html, change_password.html, reset_password.html
+  - **Security Controls** (All architect-verified):
+    - Admin users cannot be deleted (enforced at backend and UI level)
+    - Admin passwords cannot be reset by other admins (only self-service change)
+    - Password confirmation validation enforced before saving
+    - All password changes require minimum 8 characters
+    - UI shows "Protected" badge for admin users
+    - No privilege escalation vulnerabilities
+
 - **2025-11-21**: Initial project creation and security hardening
   - Implemented complete Flask application with all CRUD operations
   - Created all database models and routes

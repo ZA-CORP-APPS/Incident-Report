@@ -4,7 +4,12 @@ A lightweight web application for managing security incident logs with file atta
 
 ## Features
 
-- **User Authentication**: Secure login system with username/password
+- **User Authentication & Management**: 
+  - Secure login system with username/password
+  - Role-based access control (Admin/User)
+  - Admins can add/remove users and manage passwords
+  - All users can change their own password
+  - Brute-force protection with account lockout
 - **Incident Management**: Create, view, edit, and delete incident logs
 - **Comprehensive Data Fields**:
   - Auto-generated incident ID
@@ -122,7 +127,11 @@ incident-log-system/
 │   ├── dashboard.html
 │   ├── incident_form.html
 │   ├── incident_view.html
-│   └── import.html
+│   ├── import.html
+│   ├── users.html
+│   ├── add_user.html
+│   ├── change_password.html
+│   └── reset_password.html
 └── static/                # Static assets
     └── css/
         └── style.css
@@ -170,6 +179,31 @@ incident-log-system/
 2. Upload a JSON or CSV file (must match export format)
 3. Invalid records will be skipped automatically
 
+### User Management (Admin Only)
+
+Administrators can manage user accounts:
+
+1. Click **"Users"** in the navigation menu
+2. **Add New User**:
+   - Click **"Add New User"** button
+   - Enter username, full name, and password
+   - Assign Admin or User role
+   - Click **"Add User"**
+3. **View Users**: See all users with their roles (Admin/User badges)
+4. **Reset Password**: Click **"Reset Password"** button for non-admin users
+5. **Delete User**: Click **"Delete"** button for non-admin users
+6. **Protected Accounts**: Admin users cannot be deleted or have passwords reset by other admins
+
+### Changing Your Password
+
+All users can change their own password:
+
+1. Click your username in the navigation menu
+2. Select **"Change Password"**
+3. Enter your current password
+4. Enter and confirm your new password (minimum 8 characters)
+5. Click **"Change Password"**
+
 ## Security Features
 
 The application includes several built-in security features:
@@ -179,6 +213,9 @@ The application includes several built-in security features:
 - **Login Attempt Tracking**: Maximum 5 failed login attempts before 15-minute account lockout
 - **Session Management**: Secure session cookies with Flask-Login
 - **Password Hashing**: Industry-standard password hashing with Werkzeug (pbkdf2:sha256)
+- **Role-Based Access Control**: Admin and User roles with appropriate permission restrictions
+- **Admin Protection**: Admin users cannot delete themselves or other admins
+- **Password Security**: Admins can only reset passwords for non-admin users
 
 ### Required Security Configuration
 
