@@ -65,6 +65,7 @@ Complete CRUD operations for incident logs with the following fields:
 - **Auto-generated ID**: Primary key, auto-incremented
 - **Date & Time**: Timestamp of incident occurrence
 - **Camera Location**: Location identifier
+- **Severity Level**: Dropdown selection (Low, Medium, High, Critical) with color-coded badges
 - **Incident Description**: Detailed text description (required)
 - **Persons Involved**: Names/descriptions of individuals
 - **Action Taken**: Response actions documented
@@ -89,16 +90,25 @@ Complete CRUD operations for incident logs with the following fields:
 - View and download attachments
 - Automatic cleanup when incidents are deleted
 
-### 5. Data Export/Import
-- **Export to JSON**: Complete incident data with timestamps
-- **Export to CSV**: Spreadsheet-compatible format
-- **Import from JSON**: Restore data from JSON backups
-- **Import from CSV**: Bulk import capability
+### 5. Report Generation & Printing
+- **Generate Report**: Professional print-friendly incident reports
+- **Print Direct**: Browser-based printing for paper copies
+- **Save as PDF**: Use browser's print-to-PDF for digital archiving
+- **Formatted Layout**: Clean, organized report layout optimized for both screen and print
+- **Complete Data**: All incident fields included with severity badges and metadata
+
+### 6. Data Export/Import
+- **Export to JSON**: Complete incident data with timestamps and severity
+- **Export to CSV**: Spreadsheet-compatible format with severity column
+- **Import from JSON**: Restore data from JSON backups with validation
+- **Import from CSV**: Bulk import capability with severity validation
+- **Data Integrity**: Server-side validation ensures only valid severity levels (Low, Medium, High, Critical)
 - Error handling for invalid data formats
 
-### 6. User Interface
+### 7. User Interface
 - Clean, professional Bootstrap 5 design
 - Responsive layout for desktop use
+- Color-coded severity badges (Low=Green, Medium=Yellow, High=Orange, Critical=Red)
 - Color-coded status badges (Reviewed/Pending)
 - Confirmation dialogs for destructive actions
 - Flash messages for user feedback
@@ -120,6 +130,7 @@ Complete CRUD operations for incident logs with the following fields:
 - `id` (Integer, Primary Key)
 - `incident_datetime` (DateTime, Required)
 - `camera_location` (String)
+- `severity` (String, Default: 'Low', Validated: Low/Medium/High/Critical)
 - `incident_description` (Text, Required)
 - `persons_involved` (Text)
 - `action_taken` (Text)
@@ -166,6 +177,27 @@ Complete CRUD operations for incident logs with the following fields:
 - Auto-creates necessary directories (instance/, uploads/)
 
 ## Recent Changes
+- **2025-11-21**: Severity levels and report generation features added
+  - **Severity Management**:
+    - Added severity field to Incident model with dropdown selection (Low, Medium, High, Critical)
+    - Implemented server-side validation using validate_severity() function
+    - Color-coded severity badges throughout UI (Low=Green, Medium=Yellow, High=Orange, Critical=Red)
+    - Severity column added to dashboard table
+    - Severity included in all export/import operations (JSON and CSV)
+  - **Report Generation**:
+    - Created /incident/<id>/report route for generating incident reports
+    - Built incident_report.html template optimized for print and PDF
+    - Added CSS media queries for print-friendly formatting
+    - "Generate Report" button added to incident view page
+    - Reports can be printed directly or saved as PDF using browser's print function
+  - **Updates**:
+    - Updated incident_form.html with severity dropdown (required field)
+    - Updated dashboard.html to display severity in table
+    - Updated incident_view.html to show severity badge
+    - Updated CSV export to include severity column
+    - Updated JSON/CSV import to handle and validate severity
+    - Added bg-orange CSS class for High severity styling
+
 - **2025-11-21**: User management system added and security hardening completed
   - **User Management Features** (Architect-reviewed and approved):
     - Added is_admin field to User model for role-based access control
