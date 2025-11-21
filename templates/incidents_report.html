@@ -127,7 +127,7 @@
             <div class="mt-2 text-muted">Generated on {{ report_date.strftime('%B %d, %Y at %I:%M %p') }}</div>
         </div>
         
-        {% if filters.start_date or filters.end_date or filters.severity or filters.camera_location or filters.reported_by %}
+        {% if filters.start_date or filters.end_date or filters.severity or filters.camera_location or filters.reported_by or filters.reviewed_by or filters.persons_involved or filters.description %}
         <div class="filters-applied">
             <strong>Filters Applied:</strong>
             <ul class="mb-0 mt-2">
@@ -145,6 +145,15 @@
                 {% endif %}
                 {% if filters.reported_by %}
                 <li>Reported By: {{ filters.reported_by }}</li>
+                {% endif %}
+                {% if filters.reviewed_by %}
+                <li>Reviewed By: {{ filters.reviewed_by }}</li>
+                {% endif %}
+                {% if filters.persons_involved %}
+                <li>Persons Involved: {{ filters.persons_involved }}</li>
+                {% endif %}
+                {% if filters.description %}
+                <li>Description Contains: {{ filters.description }}</li>
                 {% endif %}
             </ul>
         </div>

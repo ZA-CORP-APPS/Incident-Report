@@ -282,6 +282,9 @@ def generate_report():
         severity = request.form.get('severity')
         camera_location = request.form.get('camera_location')
         reported_by = request.form.get('reported_by')
+        reviewed_by = request.form.get('reviewed_by')
+        persons_involved = request.form.get('persons_involved')
+        description = request.form.get('description')
         
         # Build query with filters
         query = Incident.query
@@ -303,6 +306,15 @@ def generate_report():
         if reported_by:
             query = query.filter(Incident.reported_by.ilike(f'%{reported_by}%'))
         
+        if reviewed_by:
+            query = query.filter(Incident.reviewed_by.ilike(f'%{reviewed_by}%'))
+        
+        if persons_involved:
+            query = query.filter(Incident.persons_involved.ilike(f'%{persons_involved}%'))
+        
+        if description:
+            query = query.filter(Incident.incident_description.ilike(f'%{description}%'))
+        
         incidents = query.order_by(Incident.incident_datetime.desc()).all()
         
         return render_template('incidents_report.html', 
@@ -310,9 +322,12 @@ def generate_report():
                              filters={
                                  'start_date': start_date,
                                  'end_date': end_date,
-                                 'severity': severity,
+                                 'severity': severity if severity else 'All',
                                  'camera_location': camera_location,
-                                 'reported_by': reported_by
+                                 'reported_by': reported_by,
+                                 'reviewed_by': reviewed_by,
+                                 'persons_involved': persons_involved,
+                                 'description': description
                              },
                              report_date=datetime.now())
     
@@ -324,7 +339,10 @@ def generate_report():
     reporters = db.session.query(Incident.reported_by).distinct().filter(Incident.reported_by.isnot(None)).all()
     reporters = [rep[0] for rep in reporters if rep[0]]
     
-    return render_template('report_filter.html', locations=locations, reporters=reporters)
+    reviewers = db.session.query(Incident.reviewed_by).distinct().filter(Incident.reviewed_by.isnot(None)).all()
+    reviewers = [rev[0] for rev in reviewers if rev[0]]
+    
+    return render_template('report_filter.html', locations=locations, reporters=reporters, reviewers=reviewers)
 
 
 @app.route('/incident/<int:id>/delete', methods=['POST'])
