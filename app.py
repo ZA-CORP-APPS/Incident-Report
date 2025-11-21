@@ -272,11 +272,59 @@ def edit_incident(id):
     return render_template('incident_form.html', incident=incident)
 
 
-@app.route('/incident/<int:id>/report')
+@app.route('/generate-report', methods=['GET', 'POST'])
 @login_required
-def generate_report(id):
-    incident = Incident.query.get_or_404(id)
-    return render_template('incident_report.html', incident=incident)
+def generate_report():
+    if request.method == 'POST':
+        # Get filter parameters from form
+        start_date = request.form.get('start_date')
+        end_date = request.form.get('end_date')
+        severity = request.form.get('severity')
+        camera_location = request.form.get('camera_location')
+        reported_by = request.form.get('reported_by')
+        
+        # Build query with filters
+        query = Incident.query
+        
+        if start_date:
+            start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(Incident.incident_datetime >= start_datetime)
+        
+        if end_date:
+            end_datetime = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+            query = query.filter(Incident.incident_datetime <= end_datetime)
+        
+        if severity and severity != 'All':
+            query = query.filter(Incident.severity == severity)
+        
+        if camera_location:
+            query = query.filter(Incident.camera_location.ilike(f'%{camera_location}%'))
+        
+        if reported_by:
+            query = query.filter(Incident.reported_by.ilike(f'%{reported_by}%'))
+        
+        incidents = query.order_by(Incident.incident_datetime.desc()).all()
+        
+        return render_template('incidents_report.html', 
+                             incidents=incidents, 
+                             filters={
+                                 'start_date': start_date,
+                                 'end_date': end_date,
+                                 'severity': severity,
+                                 'camera_location': camera_location,
+                                 'reported_by': reported_by
+                             },
+                             report_date=datetime.now())
+    
+    # GET request - show filter form
+    # Get unique values for filter dropdowns
+    locations = db.session.query(Incident.camera_location).distinct().filter(Incident.camera_location.isnot(None)).all()
+    locations = [loc[0] for loc in locations if loc[0]]
+    
+    reporters = db.session.query(Incident.reported_by).distinct().filter(Incident.reported_by.isnot(None)).all()
+    reporters = [rep[0] for rep in reporters if rep[0]]
+    
+    return render_template('report_filter.html', locations=locations, reporters=reporters)
 
 
 @app.route('/incident/<int:id>/delete', methods=['POST'])
