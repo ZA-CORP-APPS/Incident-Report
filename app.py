@@ -458,8 +458,8 @@ def delete_user(user_id):
         flash('You cannot delete your own account.', 'danger')
         return redirect(url_for('manage_users'))
     
-    if user.username == 'admin':
-        flash('Cannot delete the primary admin account.', 'danger')
+    if user.is_admin:
+        flash('Cannot delete admin users. Revoke admin privileges first.', 'danger')
         return redirect(url_for('manage_users'))
     
     username = user.username
@@ -502,13 +502,17 @@ def change_password():
 def reset_user_password(user_id):
     user = User.query.get_or_404(user_id)
     
-    if user.is_admin and user.id != current_user.id:
-        flash('You cannot reset the password of another admin user.', 'danger')
+    if user.is_admin:
+        flash('Cannot reset password for admin users. Admins must change their own password.', 'danger')
         return redirect(url_for('manage_users'))
     
     if request.method == 'POST':
         new_password = request.form.get('new_password')
         confirm_password = request.form.get('confirm_password')
+        
+        if not new_password or not confirm_password:
+            flash('Both password fields are required.', 'danger')
+            return render_template('reset_password.html', user=user)
         
         if len(new_password) < 8:
             flash('Password must be at least 8 characters long.', 'danger')

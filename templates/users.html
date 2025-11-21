@@ -43,20 +43,22 @@
                                 {% endif %}
                             </td>
                             <td>
-                                {% if not user.is_admin or user.id == current_user.id %}
+                                {% if not user.is_admin %}
                                 <a href="{{ url_for('reset_user_password', user_id=user.id) }}" 
                                    class="btn btn-sm btn-warning" title="Reset Password">
                                     <i class="bi bi-key"></i> Reset Password
                                 </a>
                                 {% endif %}
                                 
-                                {% if user.id != current_user.id and user.username != 'admin' %}
+                                {% if user.id != current_user.id and not user.is_admin %}
                                 <button type="button" class="btn btn-sm btn-danger" 
                                         data-bs-toggle="modal" 
                                         data-bs-target="#deleteModal{{ user.id }}" 
                                         title="Delete User">
                                     <i class="bi bi-trash"></i> Delete
                                 </button>
+                                {% else %}
+                                <span class="badge bg-secondary">Protected</span>
                                 {% endif %}
                             </td>
                         </tr>
