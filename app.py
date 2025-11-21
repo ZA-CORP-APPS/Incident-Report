@@ -267,6 +267,13 @@ def edit_incident(id):
     return render_template('incident_form.html', incident=incident)
 
 
+@app.route('/incident/<int:id>/report')
+@login_required
+def generate_report(id):
+    incident = Incident.query.get_or_404(id)
+    return render_template('incident_report.html', incident=incident)
+
+
 @app.route('/incident/<int:id>/delete', methods=['POST'])
 @login_required
 def delete_incident(id):
@@ -314,7 +321,7 @@ def export_csv():
     writer = csv.writer(output)
     
     writer.writerow([
-        'ID', 'Incident DateTime', 'Camera Location', 'Incident Description',
+        'ID', 'Incident DateTime', 'Camera Location', 'Severity', 'Incident Description',
         'Persons Involved', 'Action Taken', 'Footage Reference', 'Reported By',
         'Reviewed By', 'Remarks/Outcome', 'Attachment Filename', 'Created At', 'Updated At'
     ])
@@ -324,6 +331,7 @@ def export_csv():
             incident.id,
             incident.incident_datetime.isoformat() if incident.incident_datetime else '',
             incident.camera_location or '',
+            incident.severity or 'Low',
             incident.incident_description or '',
             incident.persons_involved or '',
             incident.action_taken or '',

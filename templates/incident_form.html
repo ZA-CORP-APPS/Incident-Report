@@ -35,6 +35,17 @@
                         </div>
 
                         <div class="mb-3">
+                            <label for="severity" class="form-label">Severity *</label>
+                            <select class="form-select" id="severity" name="severity" required>
+                                <option value="Low" {% if incident and incident.severity == 'Low' %}selected{% endif %}>Low</option>
+                                <option value="Medium" {% if incident and incident.severity == 'Medium' %}selected{% endif %}>Medium</option>
+                                <option value="High" {% if incident and incident.severity == 'High' %}selected{% endif %}>High</option>
+                                <option value="Critical" {% if incident and incident.severity == 'Critical' %}selected{% endif %}>Critical</option>
+                            </select>
+                            <div class="form-text">Select incident severity level</div>
+                        </div>
+
+                        <div class="mb-3">
                             <label for="incident_description" class="form-label">Incident Description *</label>
                             <textarea class="form-control" id="incident_description" name="incident_description" rows="4" required>{{ incident.incident_description if incident else '' }}</textarea>
                             <div class="form-text">Provide detailed description of the incident</div>

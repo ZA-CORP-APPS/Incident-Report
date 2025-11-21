@@ -44,6 +44,7 @@
                             <th>ID</th>
                             <th>Date & Time</th>
                             <th>Camera Location</th>
+                            <th>Severity</th>
                             <th>Description</th>
                             <th>Reported By</th>
                             <th>Status</th>
@@ -56,13 +57,23 @@
                             <td><strong>#{{ incident.id }}</strong></td>
                             <td>{{ incident.incident_datetime.strftime('%Y-%m-%d %H:%M') if incident.incident_datetime else 'N/A' }}</td>
                             <td>{{ incident.camera_location or 'N/A' }}</td>
+                            <td>
+                                <span class="badge 
+                                    {% if incident.severity == 'Low' %}bg-success
+                                    {% elif incident.severity == 'Medium' %}bg-warning text-dark
+                                    {% elif incident.severity == 'High' %}bg-orange text-white
+                                    {% elif incident.severity == 'Critical' %}bg-danger
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ incident.severity or 'Low' }}
+                                </span>
+                            </td>
                             <td>{{ incident.incident_description[:80] }}{% if incident.incident_description|length > 80 %}...{% endif %}</td>
                             <td>{{ incident.reported_by or 'N/A' }}</td>
                             <td>
                                 {% if incident.reviewed_by %}
                                     <span class="badge bg-success">Reviewed</span>
                                 {% else %}
-                                    <span class="badge bg-warning">Pending</span>
+                                    <span class="badge bg-warning text-dark">Pending</span>
                                 {% endif %}
                             </td>
                             <td>
