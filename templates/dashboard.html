@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Incident Log System{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h2><i class="bi bi-list-ul"></i> Incident Logs</h2>
+        </div>
+        <div class="col-md-6 text-end">
+            <a href="{{ url_for('new_incident') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> New Incident
+            </a>
+        </div>
+    </div>
+
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <form method="GET" action="{{ url_for('dashboard') }}" class="input-group">
+                <input type="text" class="form-control" name="search" placeholder="Search incidents..." value="{{ search_query }}">
+                <button class="btn btn-outline-secondary" type="submit">
+                    <i class="bi bi-search"></i> Search
+                </button>
+                {% if search_query %}
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-danger">
+                    <i class="bi bi-x-circle"></i> Clear
+                </a>
+                {% endif %}
+            </form>
+        </div>
+        <div class="col-md-6 text-end">
+            <span class="text-muted">Total incidents: {{ incidents|length }}</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            {% if incidents %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Date & Time</th>
+                            <th>Camera Location</th>
+                            <th>Description</th>
+                            <th>Reported By</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for incident in incidents %}
+                        <tr>
+                            <td><strong>#{{ incident.id }}</strong></td>
+                            <td>{{ incident.incident_datetime.strftime('%Y-%m-%d %H:%M') if incident.incident_datetime else 'N/A' }}</td>
+                            <td>{{ incident.camera_location or 'N/A' }}</td>
+                            <td>{{ incident.incident_description[:80] }}{% if incident.incident_description|length > 80 %}...{% endif %}</td>
+                            <td>{{ incident.reported_by or 'N/A' }}</td>
+                            <td>
+                                {% if incident.reviewed_by %}
+                                    <span class="badge bg-success">Reviewed</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('view_incident', id=incident.id) }}" class="btn btn-sm btn-info" title="View">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                                <a href="{{ url_for('edit_incident', id=incident.id) }}" class="btn btn-sm btn-warning" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="bi bi-inbox" style="font-size: 4rem; color: #ccc;"></i>
+                <p class="text-muted mt-3">No incidents found. Create your first incident log.</p>
+                <a href="{{ url_for('new_incident') }}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Create Incident
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

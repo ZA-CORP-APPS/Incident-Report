@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}{% if incident %}Edit{% else %}New{% endif %} Incident - Incident Log System{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-12">
+            <h2>
+                <i class="bi bi-{% if incident %}pencil{% else %}plus-circle{% endif %}"></i>
+                {% if incident %}Edit Incident #{{ incident.id }}{% else %}New Incident Log{% endif %}
+            </h2>
+            <hr>
+        </div>
+    </div>
+
+    <form method="POST" enctype="multipart/form-data">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="bi bi-info-circle"></i> Incident Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="incident_datetime" class="form-label">Date & Time *</label>
+                            <input type="datetime-local" class="form-control" id="incident_datetime" name="incident_datetime" 
+                                   value="{% if incident %}{{ incident.incident_datetime.strftime('%Y-%m-%dT%H:%M') }}{% endif %}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="camera_location" class="form-label">Camera Location</label>
+                            <input type="text" class="form-control" id="camera_location" name="camera_location" 
+                                   value="{{ incident.camera_location if incident else '' }}" placeholder="e.g., Front Entrance, Parking Lot Camera 3">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="incident_description" class="form-label">Incident Description *</label>
+                            <textarea class="form-control" id="incident_description" name="incident_description" rows="4" required>{{ incident.incident_description if incident else '' }}</textarea>
+                            <div class="form-text">Provide detailed description of the incident</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="persons_involved" class="form-label">Persons Involved</label>
+                            <textarea class="form-control" id="persons_involved" name="persons_involved" rows="2">{{ incident.persons_involved if incident else '' }}</textarea>
+                            <div class="form-text">Names or descriptions of individuals involved</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="footage_reference" class="form-label">Footage Reference</label>
+                            <input type="text" class="form-control" id="footage_reference" name="footage_reference" 
+                                   value="{{ incident.footage_reference if incident else '' }}" placeholder="e.g., CAM3_20231121_1430">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="bi bi-clipboard-check"></i> Actions & Review</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="action_taken" class="form-label">Action Taken</label>
+                            <textarea class="form-control" id="action_taken" name="action_taken" rows="3">{{ incident.action_taken if incident else '' }}</textarea>
+                            <div class="form-text">Describe actions taken in response to the incident</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="reported_by" class="form-label">Reported By</label>
+                            <input type="text" class="form-control" id="reported_by" name="reported_by" 
+                                   value="{{ incident.reported_by if incident else (current_user.full_name or current_user.username) }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="reviewed_by" class="form-label">Reviewed By</label>
+                            <input type="text" class="form-control" id="reviewed_by" name="reviewed_by" 
+                                   value="{{ incident.reviewed_by if incident else '' }}">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="remarks_outcome" class="form-label">Remarks / Outcome</label>
+                            <textarea class="form-control" id="remarks_outcome" name="remarks_outcome" rows="3">{{ incident.remarks_outcome if incident else '' }}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5><i class="bi bi-paperclip"></i> File Attachment</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="attachment" class="form-label">Upload Image (JPG/BMP)</label>
+                            <input type="file" class="form-control" id="attachment" name="attachment" accept=".jpg,.jpeg,.bmp">
+                            <div class="form-text">Maximum file size: 16MB. Supported formats: JPG, JPEG, BMP</div>
+                            {% if incident and incident.attachment_filename %}
+                            <div class="mt-2">
+                                <small class="text-muted">Current: {{ incident.attachment_filename }}</small><br>
+                                <a href="{{ url_for('uploaded_file', filename=incident.attachment_filename) }}" target="_blank" class="btn btn-sm btn-outline-primary mt-1">
+                                    <i class="bi bi-eye"></i> View Current Image
+                                </a>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-save"></i> {% if incident %}Update{% else %}Create{% endif %} Incident
+                    </button>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle"></i> Cancel
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

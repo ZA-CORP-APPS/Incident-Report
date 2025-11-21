@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Import Data - Incident Log System{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <h2><i class="bi bi-upload"></i> Import Incident Data</h2>
+            <hr>
+
+            <div class="alert alert-info">
+                <h5><i class="bi bi-info-circle"></i> Import Instructions</h5>
+                <ul>
+                    <li>Upload a JSON or CSV file containing incident data</li>
+                    <li>The file should match the format from the export function</li>
+                    <li>All imported incidents will be added to the existing database</li>
+                    <li>Invalid or incomplete records will be skipped</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="file" class="form-label">Select File to Import</label>
+                            <input type="file" class="form-control" id="file" name="file" accept=".json,.csv" required>
+                            <div class="form-text">Supported formats: JSON, CSV</div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-upload"></i> Import Data
+                            </button>
+                            <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <h5>Sample File Formats</h5>
+                <div class="accordion" id="sampleAccordion">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#jsonSample">
+                                JSON Format Example
+                            </button>
+                        </h2>
+                        <div id="jsonSample" class="accordion-collapse collapse" data-bs-parent="#sampleAccordion">
+                            <div class="accordion-body">
+                                <pre class="bg-light p-3 rounded"><code>[
+  {
+    "incident_datetime": "2023-11-21T14:30:00",
+    "camera_location": "Front Entrance",
+    "incident_description": "Suspicious activity observed",
+    "persons_involved": "Unknown individual",
+    "action_taken": "Security notified",
+    "footage_reference": "CAM1_20231121_1430",
+    "reported_by": "John Doe",
+    "reviewed_by": "Jane Smith",
+    "remarks_outcome": "Under investigation"
+  }
+]</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#csvSample">
+                                CSV Format Example
+                            </button>
+                        </h2>
+                        <div id="csvSample" class="accordion-collapse collapse" data-bs-parent="#sampleAccordion">
+                            <div class="accordion-body">
+                                <pre class="bg-light p-3 rounded"><code>Incident DateTime,Camera Location,Incident Description,Persons Involved,Action Taken,Footage Reference,Reported By,Reviewed By,Remarks/Outcome
+2023-11-21T14:30:00,Front Entrance,Suspicious activity observed,Unknown individual,Security notified,CAM1_20231121_1430,John Doe,Jane Smith,Under investigation</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
