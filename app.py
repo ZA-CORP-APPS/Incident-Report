@@ -3,6 +3,11 @@ import json
 import csv
 import secrets
 import string
+import sqlite3
+import shutil
+import tarfile
+import hashlib
+import tempfile
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -10,6 +15,8 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from io import StringIO, BytesIO
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 app = Flask(__name__)
 
@@ -136,6 +143,44 @@ class AppSettings(db.Model):
         db.session.commit()
 
 
+class BackupConfig(db.Model):
+    """Stores backup configuration settings"""
+    id = db.Column(db.Integer, primary_key=True)
+    shared_folder_path = db.Column(db.String(500))
+    backup_enabled = db.Column(db.Boolean, default=False)
+    schedule_frequency = db.Column(db.String(20), default='daily')  # daily, weekly, monthly
+    schedule_time = db.Column(db.String(5), default='02:00')  # HH:MM format
+    retention_count = db.Column(db.Integer, default=30)  # Keep last N backups
+    last_backup_time = db.Column(db.DateTime)
+    last_backup_status = db.Column(db.String(20))  # success, failed
+    
+    @staticmethod
+    def get_config():
+        """Get or create backup configuration"""
+        config = BackupConfig.query.first()
+        if not config:
+            config = BackupConfig()
+            db.session.add(config)
+            db.session.commit()
+        return config
+
+
+class BackupJob(db.Model):
+    """Tracks individual backup/restore operations"""
+    id = db.Column(db.Integer, primary_key=True)
+    job_type = db.Column(db.String(20), nullable=False)  # backup, restore
+    status = db.Column(db.String(20), nullable=False)  # running, success, failed
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = db.Column(db.DateTime)
+    user = db.Column(db.String(80))  # User who triggered (or 'system' for scheduled)
+    backup_path = db.Column(db.String(500))
+    incident_count = db.Column(db.Integer)
+    file_count = db.Column(db.Integer)
+    total_size_mb = db.Column(db.Float)
+    error_message = db.Column(db.Text)
+    metadata = db.Column(db.Text)  # JSON string with additional details
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -225,6 +270,335 @@ def admin_required(f):
             return redirect(url_for('dashboard'))
         return f(*args, **kwargs)
     return decorated_function
+
+
+def calculate_sha256(filepath):
+    """Calculate SHA256 checksum of a file"""
+    sha256_hash = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for byte_block in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(byte_block)
+    return sha256_hash.hexdigest()
+
+
+def create_backup(user='system'):
+    """Create a complete backup of database and media files"""
+    job = BackupJob(job_type='backup', status='running', user=user)
+    db.session.add(job)
+    db.session.commit()
+    
+    try:
+        config = BackupConfig.get_config()
+        
+        if not config.shared_folder_path:
+            raise ValueError("Shared folder path not configured")
+        
+        if not os.path.exists(config.shared_folder_path):
+            raise ValueError(f"Shared folder path does not exist: {config.shared_folder_path}")
+        
+        if not os.access(config.shared_folder_path, os.W_OK):
+            raise ValueError(f"No write permission to shared folder: {config.shared_folder_path}")
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        year_month_path = datetime.now().strftime('%Y/%m')
+        backup_dir = os.path.join(config.shared_folder_path, 'incident_backups', year_month_path, timestamp)
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        temp_dir = tempfile.mkdtemp()
+        
+        try:
+            db_temp_path = os.path.join(temp_dir, 'incidents.db')
+            source_db = sqlite3.connect(DB_PATH)
+            dest_db = sqlite3.connect(db_temp_path)
+            with dest_db:
+                source_db.backup(dest_db)
+            source_db.close()
+            dest_db.close()
+            
+            backup_contents = os.path.join(temp_dir, 'backup_data')
+            os.makedirs(backup_contents, exist_ok=True)
+            shutil.copy2(db_temp_path, os.path.join(backup_contents, 'incidents.db'))
+            
+            uploads_dest = os.path.join(backup_contents, 'uploads')
+            if os.path.exists(app.config['UPLOAD_FOLDER']) and os.listdir(app.config['UPLOAD_FOLDER']):
+                shutil.copytree(app.config['UPLOAD_FOLDER'], uploads_dest)
+            else:
+                os.makedirs(uploads_dest, exist_ok=True)
+            
+            archive_path = os.path.join(backup_dir, 'backup.tar.gz')
+            with tarfile.open(archive_path, 'w:gz') as tar:
+                tar.add(backup_contents, arcname='.')
+            
+            db_checksum = calculate_sha256(os.path.join(backup_contents, 'incidents.db'))
+            archive_checksum = calculate_sha256(archive_path)
+            
+            incident_count = Incident.query.count()
+            
+            file_count = 0
+            uploads_size = 0
+            if os.path.exists(uploads_dest):
+                for root, dirs, files in os.walk(uploads_dest):
+                    file_count += len(files)
+                    for file in files:
+                        uploads_size += os.path.getsize(os.path.join(root, file))
+            
+            archive_size = os.path.getsize(archive_path)
+            total_size_mb = archive_size / (1024 * 1024)
+            
+            metadata = {
+                'version': '1.0',
+                'timestamp': timestamp,
+                'backup_type': 'full',
+                'incident_count': incident_count,
+                'media_file_count': file_count,
+                'database_checksum': db_checksum,
+                'archive_checksum': archive_checksum,
+                'archive_size_bytes': archive_size,
+                'media_size_bytes': uploads_size,
+                'created_by': user
+            }
+            
+            metadata_path = os.path.join(backup_dir, 'metadata.json')
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            job.status = 'success'
+            job.completed_at = datetime.utcnow()
+            job.backup_path = backup_dir
+            job.incident_count = incident_count
+            job.file_count = file_count
+            job.total_size_mb = total_size_mb
+            job.metadata = json.dumps(metadata)
+            
+            config.last_backup_time = datetime.utcnow()
+            config.last_backup_status = 'success'
+            
+            db.session.commit()
+            
+            cleanup_old_backups(config)
+            
+            return True, f"Backup created successfully at {backup_dir}"
+            
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+    except Exception as e:
+        job.status = 'failed'
+        job.completed_at = datetime.utcnow()
+        job.error_message = str(e)
+        
+        config = BackupConfig.get_config()
+        config.last_backup_status = 'failed'
+        
+        db.session.commit()
+        
+        return False, f"Backup failed: {str(e)}"
+
+
+def cleanup_old_backups(config):
+    """Remove old backups based on retention policy"""
+    try:
+        backups_root = os.path.join(config.shared_folder_path, 'incident_backups')
+        if not os.path.exists(backups_root):
+            return
+        
+        backup_list = []
+        for year_dir in os.listdir(backups_root):
+            year_path = os.path.join(backups_root, year_dir)
+            if not os.path.isdir(year_path):
+                continue
+            for month_dir in os.listdir(year_path):
+                month_path = os.path.join(year_path, month_dir)
+                if not os.path.isdir(month_path):
+                    continue
+                for backup_dir in os.listdir(month_path):
+                    backup_path = os.path.join(month_path, backup_dir)
+                    if os.path.isdir(backup_path):
+                        metadata_path = os.path.join(backup_path, 'metadata.json')
+                        if os.path.exists(metadata_path):
+                            with open(metadata_path, 'r') as f:
+                                metadata = json.load(f)
+                                backup_list.append({
+                                    'path': backup_path,
+                                    'timestamp': metadata.get('timestamp', ''),
+                                    'created_at': datetime.strptime(metadata.get('timestamp', '19700101_000000'), '%Y%m%d_%H%M%S')
+                                })
+        
+        backup_list.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        if len(backup_list) > config.retention_count:
+            for backup in backup_list[config.retention_count:]:
+                shutil.rmtree(backup['path'], ignore_errors=True)
+                
+    except Exception as e:
+        print(f"Error cleaning up old backups: {e}")
+
+
+def restore_from_backup(backup_path, user='admin'):
+    """Restore database and media files from a backup"""
+    job = BackupJob(job_type='restore', status='running', user=user)
+    db.session.add(job)
+    db.session.commit()
+    
+    try:
+        metadata_path = os.path.join(backup_path, 'metadata.json')
+        if not os.path.exists(metadata_path):
+            raise ValueError("Invalid backup: metadata.json not found")
+        
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        archive_path = os.path.join(backup_path, 'backup.tar.gz')
+        if not os.path.exists(archive_path):
+            raise ValueError("Invalid backup: backup.tar.gz not found")
+        
+        archive_checksum = calculate_sha256(archive_path)
+        if archive_checksum != metadata.get('archive_checksum'):
+            raise ValueError("Backup integrity check failed: checksum mismatch")
+        
+        pre_restore_backup, msg = create_backup(user=f'{user}_pre_restore')
+        if not pre_restore_backup:
+            raise ValueError(f"Failed to create pre-restore backup: {msg}")
+        
+        temp_dir = tempfile.mkdtemp()
+        
+        try:
+            with tarfile.open(archive_path, 'r:gz') as tar:
+                tar.extractall(temp_dir)
+            
+            restored_db = os.path.join(temp_dir, 'incidents.db')
+            if not os.path.exists(restored_db):
+                raise ValueError("Invalid backup: incidents.db not found in archive")
+            
+            db_checksum = calculate_sha256(restored_db)
+            if db_checksum != metadata.get('database_checksum'):
+                raise ValueError("Database integrity check failed: checksum mismatch")
+            
+            if os.path.exists(app.config['UPLOAD_FOLDER']):
+                shutil.rmtree(app.config['UPLOAD_FOLDER'])
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+            restored_uploads = os.path.join(temp_dir, 'uploads')
+            if os.path.exists(restored_uploads):
+                for item in os.listdir(restored_uploads):
+                    src = os.path.join(restored_uploads, item)
+                    dst = os.path.join(app.config['UPLOAD_FOLDER'], item)
+                    if os.path.isdir(src):
+                        shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+            
+            shutil.copy2(restored_db, DB_PATH)
+            
+            job.status = 'success'
+            job.completed_at = datetime.utcnow()
+            job.backup_path = backup_path
+            job.incident_count = metadata.get('incident_count')
+            job.file_count = metadata.get('media_file_count')
+            job.total_size_mb = metadata.get('archive_size_bytes', 0) / (1024 * 1024)
+            job.metadata = json.dumps(metadata)
+            
+            db.session.commit()
+            
+            return True, f"Successfully restored from backup: {metadata.get('timestamp')}"
+            
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
+    except Exception as e:
+        job.status = 'failed'
+        job.completed_at = datetime.utcnow()
+        job.error_message = str(e)
+        db.session.commit()
+        
+        return False, f"Restore failed: {str(e)}"
+
+
+def get_available_backups(shared_folder_path):
+    """List all available backups from the shared folder"""
+    backups = []
+    
+    try:
+        backups_root = os.path.join(shared_folder_path, 'incident_backups')
+        if not os.path.exists(backups_root):
+            return backups
+        
+        for year_dir in os.listdir(backups_root):
+            year_path = os.path.join(backups_root, year_dir)
+            if not os.path.isdir(year_path):
+                continue
+            for month_dir in os.listdir(year_path):
+                month_path = os.path.join(year_path, month_dir)
+                if not os.path.isdir(month_path):
+                    continue
+                for backup_dir in os.listdir(month_path):
+                    backup_path = os.path.join(month_path, backup_dir)
+                    if os.path.isdir(backup_path):
+                        metadata_path = os.path.join(backup_path, 'metadata.json')
+                        if os.path.exists(metadata_path):
+                            with open(metadata_path, 'r') as f:
+                                metadata = json.load(f)
+                                backups.append({
+                                    'path': backup_path,
+                                    'metadata': metadata
+                                })
+        
+        backups.sort(key=lambda x: x['metadata'].get('timestamp', ''), reverse=True)
+        
+    except Exception as e:
+        print(f"Error listing backups: {e}")
+    
+    return backups
+
+
+scheduler = BackgroundScheduler()
+
+
+def scheduled_backup():
+    """Function to be called by the scheduler"""
+    with app.app_context():
+        config = BackupConfig.get_config()
+        if config.backup_enabled and config.shared_folder_path:
+            create_backup(user='system')
+
+
+def update_backup_schedule():
+    """Update the backup schedule based on current configuration"""
+    try:
+        scheduler.remove_all_jobs()
+        
+        config = BackupConfig.get_config()
+        
+        if config.backup_enabled and config.shared_folder_path:
+            hour, minute = map(int, config.schedule_time.split(':'))
+            
+            if config.schedule_frequency == 'daily':
+                scheduler.add_job(
+                    func=scheduled_backup,
+                    trigger=CronTrigger(hour=hour, minute=minute),
+                    id='backup_job',
+                    name='Daily Backup',
+                    replace_existing=True
+                )
+            elif config.schedule_frequency == 'weekly':
+                scheduler.add_job(
+                    func=scheduled_backup,
+                    trigger=CronTrigger(day_of_week=0, hour=hour, minute=minute),
+                    id='backup_job',
+                    name='Weekly Backup',
+                    replace_existing=True
+                )
+            elif config.schedule_frequency == 'monthly':
+                scheduler.add_job(
+                    func=scheduled_backup,
+                    trigger=CronTrigger(day=1, hour=hour, minute=minute),
+                    id='backup_job',
+                    name='Monthly Backup',
+                    replace_existing=True
+                )
+                
+    except Exception as e:
+        print(f"Error updating backup schedule: {e}")
 
 
 @app.route('/')
@@ -1003,6 +1377,89 @@ def app_settings():
     return render_template('settings.html', current_logo=current_logo)
 
 
+@app.route('/backup-settings', methods=['GET', 'POST'])
+@admin_required
+def backup_settings():
+    """Admin-only page to configure backup settings"""
+    config = BackupConfig.get_config()
+    
+    if request.method == 'POST':
+        config.shared_folder_path = request.form.get('shared_folder_path', '').strip()
+        config.backup_enabled = request.form.get('backup_enabled') == 'on'
+        config.schedule_frequency = request.form.get('schedule_frequency', 'daily')
+        config.schedule_time = request.form.get('schedule_time', '02:00')
+        config.retention_count = int(request.form.get('retention_count', 30))
+        
+        if config.shared_folder_path:
+            if not os.path.exists(config.shared_folder_path):
+                flash(f'Error: Shared folder path does not exist: {config.shared_folder_path}', 'danger')
+            elif not os.access(config.shared_folder_path, os.W_OK):
+                flash(f'Error: No write permission to shared folder: {config.shared_folder_path}', 'danger')
+            else:
+                db.session.commit()
+                update_backup_schedule()
+                flash('Backup settings saved successfully!', 'success')
+                return redirect(url_for('backup_settings'))
+        else:
+            db.session.commit()
+            update_backup_schedule()
+            flash('Backup settings saved successfully!', 'success')
+            return redirect(url_for('backup_settings'))
+    
+    return render_template('backup_settings.html', config=config)
+
+
+@app.route('/backup-now', methods=['POST'])
+@admin_required
+def backup_now():
+    """Manually trigger a backup"""
+    success, message = create_backup(user=current_user.username)
+    if success:
+        flash(message, 'success')
+    else:
+        flash(message, 'danger')
+    return redirect(url_for('backup_management'))
+
+
+@app.route('/backup-management')
+@admin_required
+def backup_management():
+    """Admin-only page to view backup history and available backups"""
+    config = BackupConfig.get_config()
+    
+    jobs = BackupJob.query.order_by(BackupJob.started_at.desc()).limit(50).all()
+    
+    available_backups = []
+    if config.shared_folder_path and os.path.exists(config.shared_folder_path):
+        available_backups = get_available_backups(config.shared_folder_path)
+    
+    return render_template('backup_management.html', 
+                         config=config, 
+                         jobs=jobs,
+                         backups=available_backups)
+
+
+@app.route('/restore-backup', methods=['POST'])
+@admin_required
+def restore_backup_route():
+    """Restore from a selected backup"""
+    backup_path = request.form.get('backup_path')
+    
+    if not backup_path or not os.path.exists(backup_path):
+        flash('Invalid backup path selected', 'danger')
+        return redirect(url_for('backup_management'))
+    
+    success, message = restore_from_backup(backup_path, user=current_user.username)
+    
+    if success:
+        flash(f'{message}. The application will reload to reflect the restored data.', 'warning')
+        flash('IMPORTANT: The database and files have been restored. Please verify your data.', 'info')
+    else:
+        flash(message, 'danger')
+    
+    return redirect(url_for('backup_management'))
+
+
 def generate_strong_password(length=16):
     alphabet = string.ascii_letters + string.digits + string.punctuation
     password = ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -1033,4 +1490,6 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
+    scheduler.start()
+    update_backup_schedule()
     app.run(host='0.0.0.0', port=5000, debug=True)
