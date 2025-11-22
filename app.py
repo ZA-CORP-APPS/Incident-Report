@@ -18,6 +18,7 @@ from werkzeug.utils import secure_filename
 from io import StringIO, BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+import smbclient
 
 app = Flask(__name__)
 
@@ -155,6 +156,12 @@ class BackupConfig(db.Model):
     last_backup_time = db.Column(db.DateTime)
     last_backup_status = db.Column(db.String(20))  # success, failed
     
+    use_smb = db.Column(db.Boolean, default=False)
+    smb_server = db.Column(db.String(255))
+    smb_share = db.Column(db.String(255))
+    smb_port = db.Column(db.Integer, default=445)
+    smb_domain = db.Column(db.String(255))
+    
     @staticmethod
     def get_config():
         """Get or create backup configuration"""
@@ -282,6 +289,85 @@ def calculate_sha256(filepath):
     return sha256_hash.hexdigest()
 
 
+def get_smb_credentials():
+    """Get SMB credentials from environment secrets"""
+    username = os.environ.get('SMB_USERNAME')
+    password = os.environ.get('SMB_PASSWORD')
+    return username, password
+
+
+def get_smb_path(config, path=''):
+    """Construct SMB UNC path from config"""
+    if not config.use_smb or not config.smb_server or not config.smb_share:
+        return None
+    return rf'\\{config.smb_server}\{config.smb_share}\{path}'.replace('/', '\\')
+
+
+def test_smb_connection(config):
+    """Test SMB connection with current settings"""
+    try:
+        username, password = get_smb_credentials()
+        if not username or not password:
+            return False, "SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD in environment secrets."
+        
+        if not config.smb_server or not config.smb_share:
+            return False, "SMB server and share must be configured."
+        
+        smbclient.register_session(
+            config.smb_server,
+            username=username,
+            password=password,
+            port=config.smb_port or 445
+        )
+        
+        smb_path = get_smb_path(config, '')
+        try:
+            smbclient.listdir(smb_path)
+            return True, "SMB connection successful!"
+        except Exception as e:
+            return False, f"Cannot access SMB share: {str(e)}"
+            
+    except Exception as e:
+        return False, f"SMB connection failed: {str(e)}"
+
+
+def smb_makedirs(path):
+    """Create directories on SMB share (similar to os.makedirs)"""
+    try:
+        parts = path.strip('\\').split('\\')
+        current_path = f'\\\\{parts[0]}\\{parts[1]}'
+        
+        for part in parts[2:]:
+            current_path = os.path.join(current_path, part).replace('/', '\\')
+            try:
+                smbclient.mkdir(current_path)
+            except Exception:
+                pass
+        return True
+    except Exception as e:
+        raise Exception(f"Failed to create SMB directories: {str(e)}")
+
+
+def smb_copy_file(src_local, dst_smb):
+    """Copy a local file to SMB share"""
+    try:
+        with open(src_local, 'rb') as src:
+            with smbclient.open_file(dst_smb, mode='wb') as dst:
+                shutil.copyfileobj(src, dst)
+    except Exception as e:
+        raise Exception(f"Failed to copy file to SMB: {str(e)}")
+
+
+def smb_copy_from_smb(src_smb, dst_local):
+    """Copy a file from SMB share to local"""
+    try:
+        with smbclient.open_file(src_smb, mode='rb') as src:
+            with open(dst_local, 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+    except Exception as e:
+        raise Exception(f"Failed to copy file from SMB: {str(e)}")
+
+
 def create_backup(user='system'):
     """Create a complete backup of database and media files"""
     if not backup_lock.acquire(blocking=False):
@@ -298,19 +384,39 @@ def create_backup(user='system'):
             return False, f"Failed to create backup job: {str(e)}"
         config = BackupConfig.get_config()
         
-        if not config.shared_folder_path:
-            raise ValueError("Shared folder path not configured")
-        
-        if not os.path.exists(config.shared_folder_path):
-            raise ValueError(f"Shared folder path does not exist: {config.shared_folder_path}")
-        
-        if not os.access(config.shared_folder_path, os.W_OK):
-            raise ValueError(f"No write permission to shared folder: {config.shared_folder_path}")
-        
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         year_month_path = datetime.now().strftime('%Y/%m')
-        backup_dir = os.path.join(config.shared_folder_path, 'incident_backups', year_month_path, timestamp)
-        os.makedirs(backup_dir, exist_ok=True)
+        
+        if config.use_smb:
+            username, password = get_smb_credentials()
+            if not username or not password:
+                raise ValueError("SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD.")
+            
+            if not config.smb_server or not config.smb_share:
+                raise ValueError("SMB server and share must be configured")
+            
+            smbclient.register_session(
+                config.smb_server,
+                username=username,
+                password=password,
+                port=config.smb_port or 445
+            )
+            
+            backup_path_rel = f'incident_backups\\{year_month_path}\\{timestamp}'
+            backup_dir = get_smb_path(config, backup_path_rel)
+            smb_makedirs(backup_dir)
+        else:
+            if not config.shared_folder_path:
+                raise ValueError("Shared folder path not configured")
+            
+            if not os.path.exists(config.shared_folder_path):
+                raise ValueError(f"Shared folder path does not exist: {config.shared_folder_path}")
+            
+            if not os.access(config.shared_folder_path, os.W_OK):
+                raise ValueError(f"No write permission to shared folder: {config.shared_folder_path}")
+            
+            backup_dir = os.path.join(config.shared_folder_path, 'incident_backups', year_month_path, timestamp)
+            os.makedirs(backup_dir, exist_ok=True)
         
         temp_dir = tempfile.mkdtemp()
         
@@ -333,12 +439,12 @@ def create_backup(user='system'):
             else:
                 os.makedirs(uploads_dest, exist_ok=True)
             
-            archive_path = os.path.join(backup_dir, 'backup.tar.gz')
-            with tarfile.open(archive_path, 'w:gz') as tar:
+            temp_archive_path = os.path.join(temp_dir, 'backup.tar.gz')
+            with tarfile.open(temp_archive_path, 'w:gz') as tar:
                 tar.add(backup_contents, arcname='.')
             
             db_checksum = calculate_sha256(os.path.join(backup_contents, 'incidents.db'))
-            archive_checksum = calculate_sha256(archive_path)
+            archive_checksum = calculate_sha256(temp_archive_path)
             
             incident_count = Incident.query.count()
             
@@ -350,7 +456,7 @@ def create_backup(user='system'):
                     for file in files:
                         uploads_size += os.path.getsize(os.path.join(root, file))
             
-            archive_size = os.path.getsize(archive_path)
+            archive_size = os.path.getsize(temp_archive_path)
             total_size_mb = archive_size / (1024 * 1024)
             
             metadata = {
@@ -366,9 +472,18 @@ def create_backup(user='system'):
                 'created_by': user
             }
             
-            metadata_path = os.path.join(backup_dir, 'metadata.json')
-            with open(metadata_path, 'w') as f:
+            temp_metadata_path = os.path.join(temp_dir, 'metadata.json')
+            with open(temp_metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
+            
+            if config.use_smb:
+                archive_dest = os.path.join(backup_dir, 'backup.tar.gz').replace('/', '\\')
+                metadata_dest = os.path.join(backup_dir, 'metadata.json').replace('/', '\\')
+                smb_copy_file(temp_archive_path, archive_dest)
+                smb_copy_file(temp_metadata_path, metadata_dest)
+            else:
+                shutil.copy2(temp_archive_path, os.path.join(backup_dir, 'backup.tar.gz'))
+                shutil.copy2(temp_metadata_path, os.path.join(backup_dir, 'metadata.json'))
             
             job.status = 'success'
             job.completed_at = datetime.utcnow()
@@ -557,34 +672,85 @@ def restore_from_backup(backup_path, user='admin'):
         backup_lock.release()
 
 
-def get_available_backups(shared_folder_path):
-    """List all available backups from the shared folder"""
+def get_available_backups(config):
+    """List all available backups from the shared folder or SMB share"""
     backups = []
     
     try:
-        backups_root = os.path.join(shared_folder_path, 'incident_backups')
-        if not os.path.exists(backups_root):
-            return backups
-        
-        for year_dir in os.listdir(backups_root):
-            year_path = os.path.join(backups_root, year_dir)
-            if not os.path.isdir(year_path):
-                continue
-            for month_dir in os.listdir(year_path):
-                month_path = os.path.join(year_path, month_dir)
-                if not os.path.isdir(month_path):
+        if config.use_smb:
+            username, password = get_smb_credentials()
+            if not username or not password or not config.smb_server or not config.smb_share:
+                return backups
+            
+            smbclient.register_session(
+                config.smb_server,
+                username=username,
+                password=password,
+                port=config.smb_port or 445
+            )
+            
+            backups_root = get_smb_path(config, 'incident_backups')
+            
+            try:
+                year_dirs = smbclient.listdir(backups_root)
+            except Exception:
+                return backups
+            
+            for year_dir in year_dirs:
+                if year_dir in ['.', '..']:
                     continue
-                for backup_dir in os.listdir(month_path):
-                    backup_path = os.path.join(month_path, backup_dir)
-                    if os.path.isdir(backup_path):
-                        metadata_path = os.path.join(backup_path, 'metadata.json')
-                        if os.path.exists(metadata_path):
-                            with open(metadata_path, 'r') as f:
+                year_path = os.path.join(backups_root, year_dir).replace('/', '\\')
+                try:
+                    month_dirs = smbclient.listdir(year_path)
+                except Exception:
+                    continue
+                for month_dir in month_dirs:
+                    if month_dir in ['.', '..']:
+                        continue
+                    month_path = os.path.join(year_path, month_dir).replace('/', '\\')
+                    try:
+                        backup_dirs = smbclient.listdir(month_path)
+                    except Exception:
+                        continue
+                    for backup_dir in backup_dirs:
+                        if backup_dir in ['.', '..']:
+                            continue
+                        backup_path = os.path.join(month_path, backup_dir).replace('/', '\\')
+                        metadata_path = os.path.join(backup_path, 'metadata.json').replace('/', '\\')
+                        try:
+                            with smbclient.open_file(metadata_path, mode='r') as f:
                                 metadata = json.load(f)
                                 backups.append({
                                     'path': backup_path,
                                     'metadata': metadata
                                 })
+                        except Exception:
+                            continue
+        else:
+            shared_folder_path = config.shared_folder_path
+            backups_root = os.path.join(shared_folder_path, 'incident_backups')
+            if not os.path.exists(backups_root):
+                return backups
+            
+            for year_dir in os.listdir(backups_root):
+                year_path = os.path.join(backups_root, year_dir)
+                if not os.path.isdir(year_path):
+                    continue
+                for month_dir in os.listdir(year_path):
+                    month_path = os.path.join(year_path, month_dir)
+                    if not os.path.isdir(month_path):
+                        continue
+                    for backup_dir in os.listdir(month_path):
+                        backup_path = os.path.join(month_path, backup_dir)
+                        if os.path.isdir(backup_path):
+                            metadata_path = os.path.join(backup_path, 'metadata.json')
+                            if os.path.exists(metadata_path):
+                                with open(metadata_path, 'r') as f:
+                                    metadata = json.load(f)
+                                    backups.append({
+                                        'path': backup_path,
+                                        'metadata': metadata
+                                    })
         
         backups.sort(key=lambda x: x['metadata'].get('timestamp', ''), reverse=True)
         
@@ -1429,13 +1595,29 @@ def backup_settings():
     config = BackupConfig.get_config()
     
     if request.method == 'POST':
+        config.use_smb = request.form.get('use_smb') == 'on'
+        config.smb_server = request.form.get('smb_server', '').strip()
+        config.smb_share = request.form.get('smb_share', '').strip()
+        config.smb_port = int(request.form.get('smb_port', 445))
+        config.smb_domain = request.form.get('smb_domain', '').strip()
         config.shared_folder_path = request.form.get('shared_folder_path', '').strip()
         config.backup_enabled = request.form.get('backup_enabled') == 'on'
         config.schedule_frequency = request.form.get('schedule_frequency', 'daily')
         config.schedule_time = request.form.get('schedule_time', '02:00')
         config.retention_count = int(request.form.get('retention_count', 30))
         
-        if config.shared_folder_path:
+        if config.use_smb:
+            if not config.smb_server or not config.smb_share:
+                flash('Error: SMB server and share must be configured when using SMB', 'danger')
+            else:
+                username, password = get_smb_credentials()
+                if not username or not password:
+                    flash('Warning: SMB credentials (SMB_USERNAME and SMB_PASSWORD) not set in environment secrets', 'warning')
+                db.session.commit()
+                update_backup_schedule()
+                flash('Backup settings saved successfully! SMB mode enabled.', 'success')
+                return redirect(url_for('backup_settings'))
+        elif config.shared_folder_path:
             if not os.path.exists(config.shared_folder_path):
                 flash(f'Error: Shared folder path does not exist: {config.shared_folder_path}', 'danger')
             elif not os.access(config.shared_folder_path, os.W_OK):
@@ -1448,10 +1630,36 @@ def backup_settings():
         else:
             db.session.commit()
             update_backup_schedule()
-            flash('Backup settings saved successfully!', 'success')
+            flash('Backup settings saved (no backup path configured)', 'success')
             return redirect(url_for('backup_settings'))
     
     return render_template('backup_settings.html', config=config)
+
+
+@app.route('/test-smb-connection', methods=['POST'])
+@admin_required
+def test_smb_connection_route():
+    """Test SMB connection with provided settings"""
+    smb_server = request.form.get('smb_server', '').strip()
+    smb_share = request.form.get('smb_share', '').strip()
+    smb_port = int(request.form.get('smb_port', 445))
+    
+    if not smb_server or not smb_share:
+        return jsonify({'success': False, 'message': 'SMB server and share are required'}), 400
+    
+    username, password = get_smb_credentials()
+    if not username or not password:
+        return jsonify({'success': False, 'message': 'SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD in environment secrets.'}), 400
+    
+    class TestConfig:
+        def __init__(self):
+            self.use_smb = True
+            self.smb_server = smb_server
+            self.smb_share = smb_share
+            self.smb_port = smb_port
+    
+    success, message = test_smb_connection(TestConfig())
+    return jsonify({'success': success, 'message': message})
 
 
 @app.route('/backup-now', methods=['POST'])
@@ -1490,7 +1698,7 @@ def backup_management():
     
     available_backups = []
     if config.shared_folder_path and os.path.exists(config.shared_folder_path):
-        available_backups = get_available_backups(config.shared_folder_path)
+        available_backups = get_available_backups(config)
     
     return render_template('backup_management.html', 
                          config=config, 
