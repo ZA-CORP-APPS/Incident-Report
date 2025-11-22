@@ -318,8 +318,8 @@ def encrypt_password(password):
         f = Fernet(get_encryption_key())
         return f.encrypt(password.encode()).decode()
     except Exception as e:
-        print(f"Encryption error: {e}")
-        return None
+        app.logger.error(f"SMB password encryption failed: {e}")
+        raise ValueError(f"Failed to encrypt SMB password: {str(e)}")
 
 
 def decrypt_password(encrypted_password):
@@ -330,8 +330,8 @@ def decrypt_password(encrypted_password):
         f = Fernet(get_encryption_key())
         return f.decrypt(encrypted_password.encode()).decode()
     except Exception as e:
-        print(f"Decryption error: {e}")
-        return None
+        app.logger.error(f"SMB password decryption failed (possibly corrupted or SESSION_SECRET changed): {e}")
+        raise ValueError(f"Failed to decrypt SMB password - credentials may be corrupted")
 
 
 def get_smb_credentials():
@@ -339,22 +339,29 @@ def get_smb_credentials():
     Get SMB credentials from database first, then fallback to environment secrets.
     Priority: Database credentials > Environment variables
     NOTE: Database storage is for LAN-only low-risk environments as requested by user
+    Returns: (username, password, source) tuple where source is 'database' or 'environment'
     """
     try:
         config = BackupConfig.get_config()
         
         # Check database first
         if config.smb_username and config.smb_password_encrypted:
-            password = decrypt_password(config.smb_password_encrypted)
-            if password:
-                return config.smb_username, password
+            try:
+                password = decrypt_password(config.smb_password_encrypted)
+                if password:
+                    app.logger.info("Using SMB credentials from database")
+                    return config.smb_username, password, 'database'
+            except ValueError as e:
+                app.logger.error(f"Database SMB credentials failed decryption: {e}. Falling back to environment variables.")
     except Exception as e:
-        print(f"Error reading SMB credentials from database: {e}")
+        app.logger.error(f"Error reading SMB credentials from database: {e}. Falling back to environment variables.")
     
     # Fallback to environment variables
     username = os.environ.get('SMB_USERNAME')
     password = os.environ.get('SMB_PASSWORD')
-    return username, password
+    if username and password:
+        app.logger.info("Using SMB credentials from environment variables")
+    return username, password, 'environment'
 
 
 def get_smb_path(config, path=''):
@@ -367,9 +374,9 @@ def get_smb_path(config, path=''):
 def test_smb_connection(config):
     """Test SMB connection with current settings"""
     try:
-        username, password = get_smb_credentials()
+        username, password, _ = get_smb_credentials()
         if not username or not password:
-            return False, "SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD in environment secrets."
+            return False, "SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD in environment secrets or database."
         
         if not config.smb_server or not config.smb_share:
             return False, "SMB server and share must be configured."
@@ -449,9 +456,9 @@ def create_backup(user='system'):
         year_month_path = datetime.now().strftime('%Y/%m')
         
         if config.use_smb:
-            username, password = get_smb_credentials()
+            username, password, _ = get_smb_credentials()
             if not username or not password:
-                raise ValueError("SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD.")
+                raise ValueError("SMB credentials not configured. Please set credentials in database or environment variables.")
             
             if not config.smb_server or not config.smb_share:
                 raise ValueError("SMB server and share must be configured")
@@ -678,9 +685,9 @@ def restore_from_backup(backup_path, user='admin'):
             archive_path = os.path.join(temp_restore_dir, 'backup.tar.gz')
             
             try:
-                username, password = get_smb_credentials()
+                username, password, _ = get_smb_credentials()
                 if not username or not password:
-                    raise ValueError("SMB credentials not configured")
+                    raise ValueError("SMB credentials not configured. Please set credentials in database or environment variables.")
                 
                 smbclient.register_session(
                     config.smb_server,
@@ -801,7 +808,7 @@ def get_available_backups(config):
     
     try:
         if config.use_smb:
-            username, password = get_smb_credentials()
+            username, password, _ = get_smb_credentials()
             if not username or not password or not config.smb_server or not config.smb_share:
                 return backups
             
@@ -1733,25 +1740,29 @@ def backup_settings():
         smb_username = request.form.get('smb_username', '').strip()
         smb_password = request.form.get('smb_password', '').strip()
         
-        if smb_username and smb_password:
-            # User provided credentials - store in database with encryption
-            config.smb_username = smb_username
-            config.smb_password_encrypted = encrypt_password(smb_password)
-        elif smb_username == '' and smb_password == '':
-            # User cleared credentials - remove from database
-            config.smb_username = None
-            config.smb_password_encrypted = None
+        try:
+            if smb_username and smb_password:
+                # User provided credentials - store in database with encryption
+                config.smb_username = smb_username
+                config.smb_password_encrypted = encrypt_password(smb_password)
+            elif smb_username == '' and smb_password == '':
+                # User cleared credentials - remove from database
+                config.smb_username = None
+                config.smb_password_encrypted = None
+        except ValueError as e:
+            flash(f'Error encrypting SMB credentials: {str(e)}', 'danger')
+            return render_template('backup_settings.html', config=config)
         
         if config.use_smb:
             if not config.smb_server or not config.smb_share:
                 flash('Error: SMB server and share must be configured when using SMB', 'danger')
             else:
-                username, password = get_smb_credentials()
+                username, password, source = get_smb_credentials()
                 if not username or not password:
                     flash('Warning: No SMB credentials configured. Please provide credentials in the form or set SMB_USERNAME and SMB_PASSWORD environment variables.', 'warning')
                 db.session.commit()
                 update_backup_schedule()
-                flash('Backup settings saved successfully! SMB mode enabled.', 'success')
+                flash(f'Backup settings saved successfully! SMB mode enabled (credentials from {source}).', 'success')
                 return redirect(url_for('backup_settings'))
         elif config.shared_folder_path:
             if not os.path.exists(config.shared_folder_path):
@@ -1783,9 +1794,9 @@ def test_smb_connection_route():
     if not smb_server or not smb_share:
         return jsonify({'success': False, 'message': 'SMB server and share are required'}), 400
     
-    username, password = get_smb_credentials()
+    username, password, source = get_smb_credentials()
     if not username or not password:
-        return jsonify({'success': False, 'message': 'SMB credentials not configured. Please set SMB_USERNAME and SMB_PASSWORD in environment secrets.'}), 400
+        return jsonify({'success': False, 'message': 'SMB credentials not configured. Please provide credentials in the form or set SMB_USERNAME and SMB_PASSWORD in environment secrets.'}), 400
     
     class TestConfig:
         def __init__(self):
