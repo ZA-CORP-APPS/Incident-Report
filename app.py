@@ -8,6 +8,7 @@ import shutil
 import tarfile
 import hashlib
 import tempfile
+import threading
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -283,23 +284,18 @@ def calculate_sha256(filepath):
 
 def create_backup(user='system'):
     """Create a complete backup of database and media files"""
-    global backup_lock
-    
-    if backup_lock:
+    if not backup_lock.acquire(blocking=False):
         return False, "Another backup operation is currently in progress. Please wait."
     
-    backup_lock = True
     job = None
     
     try:
-        job = BackupJob(job_type='backup', status='running', user=user)
-        db.session.add(job)
-        db.session.commit()
-    except Exception as e:
-        backup_lock = False
-        return False, f"Failed to create backup job: {str(e)}"
-    
-    try:
+        try:
+            job = BackupJob(job_type='backup', status='running', user=user)
+            db.session.add(job)
+            db.session.commit()
+        except Exception as e:
+            return False, f"Failed to create backup job: {str(e)}"
         config = BackupConfig.get_config()
         
         if not config.shared_folder_path:
@@ -389,7 +385,6 @@ def create_backup(user='system'):
             
             cleanup_old_backups(config)
             
-            backup_lock = False
             return True, f"Backup created successfully at {backup_dir}"
             
         finally:
@@ -409,8 +404,9 @@ def create_backup(user='system'):
         except:
             pass
         
-        backup_lock = False
         return False, f"Backup failed: {str(e)}"
+    finally:
+        backup_lock.release()
 
 
 def cleanup_old_backups(config):
@@ -454,23 +450,34 @@ def cleanup_old_backups(config):
 
 def restore_from_backup(backup_path, user='admin'):
     """Restore database and media files from a backup"""
-    global backup_lock
-    
-    if backup_lock:
+    if not backup_lock.acquire(blocking=False):
         return False, "Another backup/restore operation is currently in progress. Please wait."
     
-    backup_lock = True
     job = None
     
     try:
-        job = BackupJob(job_type='restore', status='running', user=user)
-        db.session.add(job)
-        db.session.commit()
-    except Exception as e:
-        backup_lock = False
-        return False, f"Failed to create restore job: {str(e)}"
-    
-    try:
+        try:
+            config = BackupConfig.get_config()
+            if not config.shared_folder_path:
+                return False, "Shared folder path not configured"
+            
+            backup_path_normalized = os.path.normpath(os.path.abspath(backup_path))
+            shared_folder_normalized = os.path.normpath(os.path.abspath(config.shared_folder_path))
+            
+            try:
+                common_path = os.path.commonpath([backup_path_normalized, shared_folder_normalized])
+                if common_path != shared_folder_normalized:
+                    return False, "Security Error: Backup path is outside configured shared folder"
+            except ValueError:
+                return False, "Security Error: Backup path is outside configured shared folder"
+            
+            job = BackupJob(job_type='restore', status='running', user=user)
+            db.session.add(job)
+            db.session.commit()
+        except Exception as e:
+            if isinstance(e, ValueError) and "Security Error" in str(e):
+                raise
+            return False, f"Failed to create restore job: {str(e)}"
         metadata_path = os.path.join(backup_path, 'metadata.json')
         if not os.path.exists(metadata_path):
             raise ValueError("Invalid backup: metadata.json not found")
@@ -530,7 +537,6 @@ def restore_from_backup(backup_path, user='admin'):
             
             db.session.commit()
             
-            backup_lock = False
             return True, f"Successfully restored from backup: {metadata.get('timestamp')}"
             
         finally:
@@ -546,8 +552,9 @@ def restore_from_backup(backup_path, user='admin'):
         except:
             pass
         
-        backup_lock = False
         return False, f"Restore failed: {str(e)}"
+    finally:
+        backup_lock.release()
 
 
 def get_available_backups(shared_folder_path):
@@ -588,7 +595,7 @@ def get_available_backups(shared_folder_path):
 
 
 scheduler = BackgroundScheduler()
-backup_lock = False
+backup_lock = threading.RLock()
 
 
 def scheduled_backup():
