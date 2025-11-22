@@ -248,9 +248,41 @@
                 </div>
                 {% endif %}
                 
-                {% if incident.attachment_filename %}
+                {% if incident.attachments %}
                 <div class="field-row">
-                    <span class="field-label">Attachment:</span>
+                    <span class="field-label">Attachments ({{ incident.attachments|length }}):</span>
+                    <div class="field-value">
+                        <div class="row mt-2">
+                            {% for attachment in incident.attachments %}
+                            <div class="col-md-4 mb-3">
+                                {% if attachment.file_type == 'image' %}
+                                <div class="text-center">
+                                    <img src="{{ url_for('uploaded_file', filename=attachment.filename) }}" 
+                                         class="img-fluid rounded border" 
+                                         alt="Attachment" 
+                                         style="max-height: 150px; object-fit: cover;">
+                                    <div class="small text-muted mt-1">
+                                        <i class="bi bi-image"></i> Image ({{ (attachment.file_size / 1024)|round|int }} KB)
+                                    </div>
+                                </div>
+                                {% elif attachment.file_type == 'video' %}
+                                <div class="text-center">
+                                    <div class="border rounded p-3" style="height: 150px; display: flex; align-items: center; justify-content: center; background: #f8f9fa;">
+                                        <i class="bi bi-play-circle" style="font-size: 3rem; color: #6c757d;"></i>
+                                    </div>
+                                    <div class="small text-muted mt-1">
+                                        <i class="bi bi-film"></i> Video ({{ (attachment.file_size / (1024*1024))|round(2) }} MB)
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                {% elif incident.attachment_filename %}
+                <div class="field-row">
+                    <span class="field-label">Attachment (Legacy):</span>
                     <span class="field-value">{{ incident.attachment_filename }}</span>
                 </div>
                 {% endif %}
