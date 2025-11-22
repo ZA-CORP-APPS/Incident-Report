@@ -25,6 +25,11 @@ Key architectural decisions and features include:
 - **Application Settings**: Admin-only functionality to upload an app-wide logo (JPG/BMP), displayed in the navigation bar at 40px height. Automatic cleanup removes old logo files when uploading new ones. Settings stored in AppSettings model using key-value pairs. Context processor makes logo available across all templates.
 - **File Management**: Secure file uploads with validation, sanitization, and timestamped filenames. Maximum upload size: 1GB per incident.
 
+## Recent Changes (2025-11-22)
+- **Report Image Thumbnails**: Added image thumbnails (150px) and video placeholders to generated reports for better visualization
+- **File Upload UX**: Added instructions for selecting multiple files (Ctrl/Cmd+Click), file list preview, and upload progress indicator for large files (>5MB)
+- **Bug Fixes**: Resolved video upload display issue - videos now properly save and display (issue was browser file selection, not upload functionality)
+
 ## Recent Changes (2025-11-21)
 - **Incident Type Classification**: Added incident_type field (Security/Safety) to Incident model with color-coded badges throughout UI
 - **Multiple File Attachments**: Implemented IncidentAttachment model supporting multiple images (JPG/BMP) and videos (MP4/AVI/MOV) per incident with 1GB total limit
