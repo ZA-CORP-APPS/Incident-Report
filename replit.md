@@ -26,11 +26,23 @@ Key architectural decisions and features include:
 - **File Management**: Secure file uploads with validation, sanitization, and timestamped filenames. Maximum upload size: 1GB per incident.
 
 ## Recent Changes (2025-11-22)
+- **Backup & Restore System**: Implemented comprehensive automated backup system with scheduled backups to shared LAN folders. Features include:
+  - Admin UI for configuring shared folder path, backup schedule (daily/weekly/monthly), and retention policies
+  - Automated backups using APScheduler with configurable time and frequency
+  - Secure SQLite backup using sqlite3.Connection.backup() API for consistent snapshots
+  - tar.gz compression with SHA256 checksums for data integrity verification
+  - Organized backup structure: `<shared_folder>/incident_backups/YYYY/MM/timestamp/`
+  - Each backup includes backup.tar.gz and metadata.json with version, checksums, file counts
+  - Manual backup trigger from admin UI
+  - Complete restore functionality with pre-restore safety backup
+  - Backup job history tracking with success/failure status
+  - Automatic cleanup of old backups based on retention count
+  - BackupConfig and BackupJob database models for configuration and audit trail
 - **Report Image Thumbnails**: Added image thumbnails (150px) and video placeholders to generated reports for better visualization
 - **Multi-Folder File Upload**: Implemented file queue system with "Add Files" button that can be clicked multiple times to select files from different folders. Files accumulate in a visual queue with remove capability before upload.
 - **Upload Progress Indicator**: Switched to Fetch API for asynchronous file uploads with immediate visual progress feedback during large file uploads
 - **File Upload UX**: Added file list preview showing all queued files with individual file sizes, total size badge, and ability to remove files before submission
-- **Bug Fixes**: Resolved video upload display issue - videos now properly save and display (issue was browser file selection, not upload functionality)
+- **Filename Wrapping**: Fixed long filename overflow issue with proper word-wrap CSS in incident view
 
 ## Recent Changes (2025-11-21)
 - **Incident Type Classification**: Added incident_type field (Security/Safety) to Incident model with color-coded badges throughout UI

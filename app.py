@@ -178,7 +178,7 @@ class BackupJob(db.Model):
     file_count = db.Column(db.Integer)
     total_size_mb = db.Column(db.Float)
     error_message = db.Column(db.Text)
-    metadata = db.Column(db.Text)  # JSON string with additional details
+    job_metadata = db.Column(db.Text)  # JSON string with additional details
 
 
 @login_manager.user_loader
@@ -368,7 +368,7 @@ def create_backup(user='system'):
             job.incident_count = incident_count
             job.file_count = file_count
             job.total_size_mb = total_size_mb
-            job.metadata = json.dumps(metadata)
+            job.job_metadata = json.dumps(metadata)
             
             config.last_backup_time = datetime.utcnow()
             config.last_backup_status = 'success'
@@ -496,7 +496,7 @@ def restore_from_backup(backup_path, user='admin'):
             job.incident_count = metadata.get('incident_count')
             job.file_count = metadata.get('media_file_count')
             job.total_size_mb = metadata.get('archive_size_bytes', 0) / (1024 * 1024)
-            job.metadata = json.dumps(metadata)
+            job.job_metadata = json.dumps(metadata)
             
             db.session.commit()
             
@@ -565,38 +565,39 @@ def scheduled_backup():
 def update_backup_schedule():
     """Update the backup schedule based on current configuration"""
     try:
-        scheduler.remove_all_jobs()
-        
-        config = BackupConfig.get_config()
-        
-        if config.backup_enabled and config.shared_folder_path:
-            hour, minute = map(int, config.schedule_time.split(':'))
+        with app.app_context():
+            scheduler.remove_all_jobs()
             
-            if config.schedule_frequency == 'daily':
-                scheduler.add_job(
-                    func=scheduled_backup,
-                    trigger=CronTrigger(hour=hour, minute=minute),
-                    id='backup_job',
-                    name='Daily Backup',
-                    replace_existing=True
-                )
-            elif config.schedule_frequency == 'weekly':
-                scheduler.add_job(
-                    func=scheduled_backup,
-                    trigger=CronTrigger(day_of_week=0, hour=hour, minute=minute),
-                    id='backup_job',
-                    name='Weekly Backup',
-                    replace_existing=True
-                )
-            elif config.schedule_frequency == 'monthly':
-                scheduler.add_job(
-                    func=scheduled_backup,
-                    trigger=CronTrigger(day=1, hour=hour, minute=minute),
-                    id='backup_job',
-                    name='Monthly Backup',
-                    replace_existing=True
-                )
+            config = BackupConfig.get_config()
+            
+            if config.backup_enabled and config.shared_folder_path:
+                hour, minute = map(int, config.schedule_time.split(':'))
                 
+                if config.schedule_frequency == 'daily':
+                    scheduler.add_job(
+                        func=scheduled_backup,
+                        trigger=CronTrigger(hour=hour, minute=minute),
+                        id='backup_job',
+                        name='Daily Backup',
+                        replace_existing=True
+                    )
+                elif config.schedule_frequency == 'weekly':
+                    scheduler.add_job(
+                        func=scheduled_backup,
+                        trigger=CronTrigger(day_of_week=0, hour=hour, minute=minute),
+                        id='backup_job',
+                        name='Weekly Backup',
+                        replace_existing=True
+                    )
+                elif config.schedule_frequency == 'monthly':
+                    scheduler.add_job(
+                        func=scheduled_backup,
+                        trigger=CronTrigger(day=1, hour=hour, minute=minute),
+                        id='backup_job',
+                        name='Monthly Backup',
+                        replace_existing=True
+                    )
+                    
     except Exception as e:
         print(f"Error updating backup schedule: {e}")
 
