@@ -1790,23 +1790,47 @@ def test_smb_connection_route():
     smb_server = request.form.get('smb_server', '').strip()
     smb_share = request.form.get('smb_share', '').strip()
     smb_port = int(request.form.get('smb_port', 445))
+    smb_username = request.form.get('smb_username', '').strip()
+    smb_password = request.form.get('smb_password', '').strip()
     
     if not smb_server or not smb_share:
         return jsonify({'success': False, 'message': 'SMB server and share are required'}), 400
     
-    username, password, source = get_smb_credentials()
-    if not username or not password:
-        return jsonify({'success': False, 'message': 'SMB credentials not configured. Please provide credentials in the form or set SMB_USERNAME and SMB_PASSWORD in environment secrets.'}), 400
+    # Use credentials from form if provided, otherwise get from storage
+    if smb_username and smb_password:
+        username = smb_username
+        password = smb_password
+    else:
+        username, password, source = get_smb_credentials()
+        if not username or not password:
+            return jsonify({'success': False, 'message': 'SMB credentials not configured. Please provide credentials in the form or set SMB_USERNAME and SMB_PASSWORD in environment secrets.'}), 400
     
-    class TestConfig:
-        def __init__(self):
-            self.use_smb = True
-            self.smb_server = smb_server
-            self.smb_share = smb_share
-            self.smb_port = smb_port
-    
-    success, message = test_smb_connection(TestConfig())
-    return jsonify({'success': success, 'message': message})
+    # Test the connection with provided credentials
+    try:
+        # Clear any cached sessions to ensure we test with fresh credentials
+        try:
+            smbclient.reset_connection_cache()
+        except:
+            pass  # Ignore if cache doesn't exist
+        
+        # Register new session with provided credentials
+        smbclient.register_session(
+            smb_server,
+            username=username,
+            password=password,
+            port=smb_port
+        )
+        
+        # Attempt to list the share to validate authentication and access
+        smb_path = f"\\\\{smb_server}\\{smb_share}"
+        try:
+            smbclient.listdir(smb_path)
+            return jsonify({'success': True, 'message': 'SMB connection and authentication successful!'})
+        except Exception as e:
+            return jsonify({'success': False, 'message': f'Cannot access SMB share: {str(e)}'})
+            
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'SMB authentication failed: {str(e)}'})
 
 
 @app.route('/backup-now', methods=['POST'])
@@ -1815,12 +1839,20 @@ def backup_now():
     """Manually trigger a backup"""
     config = BackupConfig.get_config()
     
-    if not config.shared_folder_path:
-        flash('Error: Shared folder path not configured. Please configure backup settings first.', 'danger')
-        return redirect(url_for('backup_management'))
-    
-    # Skip filesystem checks for SMB - connection will be validated during backup
-    if not config.use_smb:
+    # Validate configuration based on mode
+    if config.use_smb:
+        if not config.smb_server or not config.smb_share:
+            flash('Error: SMB server and share not configured. Please configure backup settings first.', 'danger')
+            return redirect(url_for('backup_management'))
+        username, password, _ = get_smb_credentials()
+        if not username or not password:
+            flash('Error: SMB credentials not configured. Please provide credentials in backup settings.', 'danger')
+            return redirect(url_for('backup_management'))
+    else:
+        if not config.shared_folder_path:
+            flash('Error: Shared folder path not configured. Please configure backup settings first.', 'danger')
+            return redirect(url_for('backup_management'))
+        
         if not os.path.exists(config.shared_folder_path):
             flash(f'Error: Shared folder does not exist: {config.shared_folder_path}', 'danger')
             return redirect(url_for('backup_management'))
