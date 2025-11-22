@@ -593,17 +593,63 @@ def restore_from_backup(backup_path, user='admin'):
             if isinstance(e, ValueError) and "Security Error" in str(e):
                 raise
             return False, f"Failed to create restore job: {str(e)}"
-        metadata_path = os.path.join(backup_path, 'metadata.json')
-        if not os.path.exists(metadata_path):
-            raise ValueError("Invalid backup: metadata.json not found")
+        # Read metadata and archive files (from SMB if configured)
+        temp_restore_dir = None  # Track temp directory for cleanup
         
+        if config.use_smb:
+            # For SMB, backup_path is like \\server\share\incident_backups\2025\11\20251122_123456
+            # Download metadata.json and backup.tar.gz from SMB to temp location
+            temp_restore_dir = tempfile.mkdtemp(prefix='restore_')
+            metadata_path = os.path.join(temp_restore_dir, 'metadata.json')
+            archive_path = os.path.join(temp_restore_dir, 'backup.tar.gz')
+            
+            try:
+                username, password = get_smb_credentials()
+                if not username or not password:
+                    raise ValueError("SMB credentials not configured")
+                
+                smbclient.register_session(
+                    config.smb_server,
+                    username=username,
+                    password=password,
+                    port=config.smb_port or 445
+                )
+                
+                # Construct SMB paths
+                smb_base_path = f"\\\\{config.smb_server}\\{config.smb_share}"
+                # Extract the relative path from backup_path
+                # backup_path format: \\server\share\incident_backups\2025\11\20251122_123456
+                parts = backup_path.replace(smb_base_path, '').strip('\\').split('\\')
+                smb_metadata_path = smb_base_path + '\\' + '\\'.join(parts) + '\\metadata.json'
+                smb_archive_path = smb_base_path + '\\' + '\\'.join(parts) + '\\backup.tar.gz'
+                
+                # Download files from SMB
+                with smbclient.open_file(smb_metadata_path, mode='rb') as smb_file:
+                    with open(metadata_path, 'wb') as local_file:
+                        local_file.write(smb_file.read())
+                
+                with smbclient.open_file(smb_archive_path, mode='rb') as smb_file:
+                    with open(archive_path, 'wb') as local_file:
+                        local_file.write(smb_file.read())
+                
+            except Exception as e:
+                shutil.rmtree(temp_restore_dir, ignore_errors=True)
+                raise ValueError(f"Failed to read backup from SMB share: {str(e)}")
+        else:
+            # Local filesystem mode
+            metadata_path = os.path.join(backup_path, 'metadata.json')
+            if not os.path.exists(metadata_path):
+                raise ValueError("Invalid backup: metadata.json not found")
+            
+            archive_path = os.path.join(backup_path, 'backup.tar.gz')
+            if not os.path.exists(archive_path):
+                raise ValueError("Invalid backup: backup.tar.gz not found")
+        
+        # Read metadata
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
         
-        archive_path = os.path.join(backup_path, 'backup.tar.gz')
-        if not os.path.exists(archive_path):
-            raise ValueError("Invalid backup: backup.tar.gz not found")
-        
+        # Verify archive integrity
         archive_checksum = calculate_sha256(archive_path)
         if archive_checksum != metadata.get('archive_checksum'):
             raise ValueError("Backup integrity check failed: checksum mismatch")
@@ -656,6 +702,9 @@ def restore_from_backup(backup_path, user='admin'):
             
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+            # Clean up temp restore directory if it was created for SMB restore
+            if temp_restore_dir:
+                shutil.rmtree(temp_restore_dir, ignore_errors=True)
             
     except Exception as e:
         try:
@@ -1672,13 +1721,15 @@ def backup_now():
         flash('Error: Shared folder path not configured. Please configure backup settings first.', 'danger')
         return redirect(url_for('backup_management'))
     
-    if not os.path.exists(config.shared_folder_path):
-        flash(f'Error: Shared folder does not exist: {config.shared_folder_path}', 'danger')
-        return redirect(url_for('backup_management'))
-    
-    if not os.access(config.shared_folder_path, os.W_OK):
-        flash(f'Error: No write permission to shared folder: {config.shared_folder_path}', 'danger')
-        return redirect(url_for('backup_management'))
+    # Skip filesystem checks for SMB - connection will be validated during backup
+    if not config.use_smb:
+        if not os.path.exists(config.shared_folder_path):
+            flash(f'Error: Shared folder does not exist: {config.shared_folder_path}', 'danger')
+            return redirect(url_for('backup_management'))
+        
+        if not os.access(config.shared_folder_path, os.W_OK):
+            flash(f'Error: No write permission to shared folder: {config.shared_folder_path}', 'danger')
+            return redirect(url_for('backup_management'))
     
     success, message = create_backup(user=current_user.username)
     if success:
@@ -1697,8 +1748,10 @@ def backup_management():
     jobs = BackupJob.query.order_by(BackupJob.started_at.desc()).limit(50).all()
     
     available_backups = []
-    if config.shared_folder_path and os.path.exists(config.shared_folder_path):
-        available_backups = get_available_backups(config)
+    if config.shared_folder_path:
+        # For SMB, always try to get backups; for local, check existence first
+        if config.use_smb or os.path.exists(config.shared_folder_path):
+            available_backups = get_available_backups(config)
     
     return render_template('backup_management.html', 
                          config=config, 
@@ -1712,7 +1765,7 @@ def restore_backup_route():
     """Restore from a selected backup"""
     backup_path = request.form.get('backup_path')
     
-    if not backup_path or not os.path.exists(backup_path):
+    if not backup_path:
         flash('Invalid backup path selected', 'danger')
         return redirect(url_for('backup_management'))
     
@@ -1721,12 +1774,25 @@ def restore_backup_route():
         flash('Shared folder not configured', 'danger')
         return redirect(url_for('backup_management'))
     
-    backup_path_normalized = os.path.normpath(os.path.abspath(backup_path))
-    shared_folder_normalized = os.path.normpath(os.path.abspath(config.shared_folder_path))
-    
-    if not backup_path_normalized.startswith(shared_folder_normalized):
-        flash('Security Error: Backup path is outside configured shared folder', 'danger')
-        return redirect(url_for('backup_management'))
+    # Path validation: skip filesystem checks for SMB paths
+    if config.use_smb:
+        # For SMB, just validate that backup_path starts with the expected SMB base path
+        smb_base_path = f"\\\\{config.smb_server}\\{config.smb_share}"
+        if not backup_path.startswith(smb_base_path):
+            flash('Security Error: Backup path is outside configured SMB share', 'danger')
+            return redirect(url_for('backup_management'))
+    else:
+        # For local filesystem, check if path exists and is within shared folder
+        if not os.path.exists(backup_path):
+            flash('Invalid backup path selected', 'danger')
+            return redirect(url_for('backup_management'))
+        
+        backup_path_normalized = os.path.normpath(os.path.abspath(backup_path))
+        shared_folder_normalized = os.path.normpath(os.path.abspath(config.shared_folder_path))
+        
+        if not backup_path_normalized.startswith(shared_folder_normalized):
+            flash('Security Error: Backup path is outside configured shared folder', 'danger')
+            return redirect(url_for('backup_management'))
     
     success, message = restore_from_backup(backup_path, user=current_user.username)
     
