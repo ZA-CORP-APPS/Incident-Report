@@ -27,7 +27,9 @@ Key architectural decisions and features include:
 
 ## Recent Changes (2025-11-22)
 - **Report Image Thumbnails**: Added image thumbnails (150px) and video placeholders to generated reports for better visualization
-- **File Upload UX**: Added instructions for selecting multiple files (Ctrl/Cmd+Click), file list preview, and upload progress indicator for large files (>5MB)
+- **Multi-Folder File Upload**: Implemented file queue system with "Add Files" button that can be clicked multiple times to select files from different folders. Files accumulate in a visual queue with remove capability before upload.
+- **Upload Progress Indicator**: Switched to Fetch API for asynchronous file uploads with immediate visual progress feedback during large file uploads
+- **File Upload UX**: Added file list preview showing all queued files with individual file sizes, total size badge, and ability to remove files before submission
 - **Bug Fixes**: Resolved video upload display issue - videos now properly save and display (issue was browser file selection, not upload functionality)
 
 ## Recent Changes (2025-11-21)
