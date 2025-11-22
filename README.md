@@ -179,7 +179,37 @@ A comprehensive, lightweight web application for managing security and safety in
 - **Network**: LAN connectivity for multi-user access
 - **Optional**: SMB/CIFS network share for remote backups
 
-## Installation
+## 🚀 Quick Installation (Ubuntu Production Deployment)
+
+### Automated One-Command Deployment
+
+For production Ubuntu LAN servers with **automatic startup on boot**:
+
+```bash
+# Clone to your preferred location
+git clone <your-github-repo-url> /home/lulo/Incident-Report
+cd /home/lulo/Incident-Report
+
+# Run automated deployment script
+sudo bash deploy-ubuntu.sh
+```
+
+**That's it!** The script automatically:
+- ✅ Installs all system dependencies
+- ✅ Creates Python virtual environment  
+- ✅ Installs Python packages
+- ✅ Generates secure SESSION_SECRET
+- ✅ Creates systemd service with auto-start on boot
+- ✅ Starts the application immediately
+- ✅ Displays admin credentials and access URL
+
+**📖 For complete deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md)**
+
+---
+
+## 💻 Manual Installation (Development/Testing)
+
+If you prefer manual setup or are running on non-Ubuntu systems:
 
 ### 1. Clone the Repository
 
@@ -188,9 +218,7 @@ git clone <repository-url>
 cd incident-log-system
 ```
 
-### 2. Create a Virtual Environment (Ubuntu 22.04+)
-
-Modern Ubuntu requires virtual environments for Python packages:
+### 2. Create a Virtual Environment
 
 ```bash
 # Install python3-venv if not already installed
@@ -204,8 +232,6 @@ source venv/bin/activate
 ```
 
 ### 3. Install Python Dependencies
-
-With the virtual environment activated:
 
 ```bash
 pip install -r requirements.txt
@@ -224,7 +250,7 @@ export SMB_USERNAME="your_smb_username"
 export SMB_PASSWORD="your_smb_password"
 ```
 
-**For persistent configuration**, add these to your `~/.bashrc` or create a `.env` file.
+**Note**: This is temporary. For production, use the automated deployment which stores SESSION_SECRET securely in the systemd service.
 
 ### 5. Run the Application
 
@@ -261,6 +287,20 @@ Please change this password immediately after first login.
 ```
 
 ⚠️ **Critical**: Save this password immediately - it will not be displayed again!
+
+---
+
+## 🔄 Production Deployment with Auto-Start
+
+For production Ubuntu servers, **always use the automated deployment script** instead of manual installation. This ensures:
+
+- ✅ Application survives server reboots
+- ✅ Automatic restart if application crashes  
+- ✅ Proper systemd service management
+- ✅ Secure SESSION_SECRET storage
+- ✅ Centralized logging to `/var/log/incident-log/`
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for complete production deployment guide.
 
 ## Project Structure
 

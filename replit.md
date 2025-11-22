@@ -26,6 +26,13 @@ Key architectural decisions and features include:
 - **File Management**: Secure file uploads with validation, sanitization, and timestamped filenames. Maximum upload size: 1GB per incident.
 
 ## Recent Changes (2025-11-22)
+- **Automated Ubuntu Deployment**: Created comprehensive deployment system for production Ubuntu servers with one-command setup:
+  - **deploy-ubuntu.sh**: Fully automated deployment script that handles dependencies, virtual environment, SESSION_SECRET generation, systemd service creation with embedded secrets, and automatic startup on boot
+  - **DEPLOYMENT.md**: Complete production deployment guide with troubleshooting, service management, and post-deployment checklist
+  - **Systemd Integration**: Application runs as a service with automatic restart on crash, survives server reboots, and includes centralized logging to /var/log/incident-log/
+  - **Secure Secret Management**: SESSION_SECRET automatically generated (256-bit) and stored securely in systemd service file (root-only access)
+  - **Zero Manual Configuration**: Single command deploys entire stack from fresh GitHub clone with all security properly configured
+  - **Deployment Location**: Standard deployment at /home/lulo/Incident-Report/ with service running as lulo user
 - **SMB/CIFS Network Share Support**: Added direct SMB/CIFS network share connectivity for backup system. Features include:
   - Direct connection to Windows/Samba network shares without mounting
   - SMB configuration in backup settings (server, share, port, domain)
