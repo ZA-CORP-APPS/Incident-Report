@@ -25,9 +25,32 @@
                 </div>
                 
                 <div id="smb-config" style="{% if not config.use_smb %}display:none;{% endif %}">
-                    <div class="alert alert-info">
-                        <i class="bi bi-key"></i> <strong>SMB Credentials Required:</strong> Please set <code>SMB_USERNAME</code> and <code>SMB_PASSWORD</code> in environment secrets for authentication.
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> <strong>Security Notice:</strong> SMB credentials can be stored in the database (encrypted) for convenience in low-risk LAN environments, or set as <code>SMB_USERNAME</code> and <code>SMB_PASSWORD</code> environment variables for higher security. Credentials in the database take priority.
                     </div>
+                    
+                    <h6 class="mb-3"><i class="bi bi-key"></i> SMB Credentials (Optional)</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smb_username" class="form-label">SMB Username</label>
+                                <input type="text" class="form-control" id="smb_username" name="smb_username" 
+                                       value="{{ config.smb_username or '' }}" placeholder="Leave empty to use environment variables" autocomplete="off">
+                                <small class="text-muted">Database storage (encrypted) or environment variable SMB_USERNAME</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smb_password" class="form-label">SMB Password</label>
+                                <input type="password" class="form-control" id="smb_password" name="smb_password" 
+                                       placeholder="Leave empty to use environment variables" autocomplete="off">
+                                <small class="text-muted">Not displayed for security. Leave empty to keep existing or use environment variable SMB_PASSWORD</small>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    
+                    <h6 class="mb-3"><i class="bi bi-hdd-network"></i> Network Share Settings</h6>
                     <div class="row">
                         <div class="col-md-6">
                             <div class="mb-3">

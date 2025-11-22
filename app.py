@@ -9,6 +9,7 @@ import tarfile
 import hashlib
 import tempfile
 import threading
+import base64
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -18,6 +19,9 @@ from werkzeug.utils import secure_filename
 from io import StringIO, BytesIO
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import smbclient
 
 app = Flask(__name__)
@@ -161,6 +165,8 @@ class BackupConfig(db.Model):
     smb_share = db.Column(db.String(255))
     smb_port = db.Column(db.Integer, default=445)
     smb_domain = db.Column(db.String(255))
+    smb_username = db.Column(db.String(255))  # Optional: store in DB instead of env
+    smb_password_encrypted = db.Column(db.Text)  # Encrypted password
     
     @staticmethod
     def get_config():
@@ -289,8 +295,63 @@ def calculate_sha256(filepath):
     return sha256_hash.hexdigest()
 
 
+def get_encryption_key():
+    """Derive encryption key from SESSION_SECRET for symmetric encryption of SMB credentials"""
+    # Use SESSION_SECRET to derive a stable encryption key
+    # WARNING: This is for LAN-only low-risk environments as explicitly requested by user
+    session_secret = app.config['SECRET_KEY'].encode()
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=b'incident_log_smb_salt',  # Fixed salt for consistent key derivation
+        iterations=100000,
+    )
+    key = base64.urlsafe_b64encode(kdf.derive(session_secret))
+    return key
+
+
+def encrypt_password(password):
+    """Encrypt SMB password for database storage (LAN low-risk environment only)"""
+    if not password:
+        return None
+    try:
+        f = Fernet(get_encryption_key())
+        return f.encrypt(password.encode()).decode()
+    except Exception as e:
+        print(f"Encryption error: {e}")
+        return None
+
+
+def decrypt_password(encrypted_password):
+    """Decrypt SMB password from database"""
+    if not encrypted_password:
+        return None
+    try:
+        f = Fernet(get_encryption_key())
+        return f.decrypt(encrypted_password.encode()).decode()
+    except Exception as e:
+        print(f"Decryption error: {e}")
+        return None
+
+
 def get_smb_credentials():
-    """Get SMB credentials from environment secrets"""
+    """
+    Get SMB credentials from database first, then fallback to environment secrets.
+    Priority: Database credentials > Environment variables
+    NOTE: Database storage is for LAN-only low-risk environments as requested by user
+    """
+    try:
+        config = BackupConfig.get_config()
+        
+        # Check database first
+        if config.smb_username and config.smb_password_encrypted:
+            password = decrypt_password(config.smb_password_encrypted)
+            if password:
+                return config.smb_username, password
+    except Exception as e:
+        print(f"Error reading SMB credentials from database: {e}")
+    
+    # Fallback to environment variables
     username = os.environ.get('SMB_USERNAME')
     password = os.environ.get('SMB_PASSWORD')
     return username, password
@@ -1668,13 +1729,26 @@ def backup_settings():
         config.schedule_time = request.form.get('schedule_time', '02:00')
         config.retention_count = int(request.form.get('retention_count', 30))
         
+        # Handle SMB credentials (optional: database storage for LAN low-risk environment)
+        smb_username = request.form.get('smb_username', '').strip()
+        smb_password = request.form.get('smb_password', '').strip()
+        
+        if smb_username and smb_password:
+            # User provided credentials - store in database with encryption
+            config.smb_username = smb_username
+            config.smb_password_encrypted = encrypt_password(smb_password)
+        elif smb_username == '' and smb_password == '':
+            # User cleared credentials - remove from database
+            config.smb_username = None
+            config.smb_password_encrypted = None
+        
         if config.use_smb:
             if not config.smb_server or not config.smb_share:
                 flash('Error: SMB server and share must be configured when using SMB', 'danger')
             else:
                 username, password = get_smb_credentials()
                 if not username or not password:
-                    flash('Warning: SMB credentials (SMB_USERNAME and SMB_PASSWORD) not set in environment secrets', 'warning')
+                    flash('Warning: No SMB credentials configured. Please provide credentials in the form or set SMB_USERNAME and SMB_PASSWORD environment variables.', 'warning')
                 db.session.commit()
                 update_backup_schedule()
                 flash('Backup settings saved successfully! SMB mode enabled.', 'success')
