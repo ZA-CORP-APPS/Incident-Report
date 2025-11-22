@@ -7,11 +7,62 @@
     <h2><i class="bi bi-archive"></i> Backup Management</h2>
     <p class="text-muted">View backup history, create manual backups, and restore from backups (Admin only)</p>
     
+    <div class="card mb-4">
+        <div class="card-body">
+            <h6><i class="bi bi-info-circle"></i> Current Configuration</h6>
+            <div class="row">
+                <div class="col-md-4">
+                    <strong>Backup Mode:</strong>
+                    {% if config.use_smb %}
+                        <span class="badge bg-primary">SMB/CIFS Network Share</span>
+                    {% else %}
+                        <span class="badge bg-secondary">Local Filesystem</span>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <strong>Destination:</strong>
+                    {% if config.use_smb %}
+                        <code>\\{{config.smb_server or 'not configured'}}\{{config.smb_share or 'not configured'}}</code>
+                    {% else %}
+                        <code>{{config.shared_folder_path or 'not configured'}}</code>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    <strong>Status:</strong>
+                    {% if config.backup_enabled %}
+                        <span class="badge bg-success">Scheduled Backups Enabled</span>
+                    {% else %}
+                        <span class="badge bg-warning">Manual Only</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% if config.backup_enabled %}
+            <div class="row mt-2">
+                <div class="col-md-12">
+                    <small class="text-muted">
+                        <i class="bi bi-clock"></i> Scheduled: {{ config.schedule_frequency|capitalize }} at {{ config.schedule_time }} | 
+                        <i class="bi bi-archive"></i> Retention: Keep last {{ config.retention_count }} backups |
+                        {% if config.last_backup_time %}
+                        <i class="bi bi-check-circle"></i> Last backup: {{ config.last_backup_time.strftime('%Y-%m-%d %H:%M') }} ({{ config.last_backup_status or 'unknown' }})
+                        {% else %}
+                        <i class="bi bi-exclamation-circle"></i> No backups created yet
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
     <div class="row mb-4">
         <div class="col-md-12">
             <form method="POST" action="{{ url_for('backup_now') }}" style="display: inline;">
                 <button type="submit" class="btn btn-success" 
-                        {% if not config.shared_folder_path %}disabled title="Configure shared folder path first"{% endif %}
+                        {% if config.use_smb %}
+                            {% if not config.smb_server or not config.smb_share %}disabled title="Configure SMB server and share first"{% endif %}
+                        {% else %}
+                            {% if not config.shared_folder_path %}disabled title="Configure shared folder path first"{% endif %}
+                        {% endif %}
                         onclick="return confirm('Create a backup now? This may take a few minutes.')">
                     <i class="bi bi-cloud-arrow-up"></i> Create Backup Now
                 </button>
