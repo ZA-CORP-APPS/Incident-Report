@@ -26,6 +26,15 @@ Key architectural decisions and features include:
 - **File Management**: Secure file uploads with validation, sanitization, and timestamped filenames. Maximum upload size: 1GB per incident.
 
 ## Recent Changes (2025-11-22)
+- **SMB/CIFS Network Share Support**: Added direct SMB/CIFS network share connectivity for backup system. Features include:
+  - Direct connection to Windows/Samba network shares without mounting
+  - SMB configuration in backup settings (server, share, port, domain)
+  - Secure credential storage using environment secrets (SMB_USERNAME, SMB_PASSWORD)
+  - Test connection functionality to verify SMB settings before saving
+  - Thread-safe backup operations with RLock for concurrent request handling
+  - Support for both local mounted folders and direct SMB connections
+  - Toggle between local path and SMB mode in admin UI
+  - Uses smbprotocol library for modern SMBv2/SMBv3 support
 - **Backup & Restore System**: Implemented comprehensive automated backup system with scheduled backups to shared LAN folders. Features include:
   - Admin UI for configuring shared folder path, backup schedule (daily/weekly/monthly), and retention policies
   - Automated backups using APScheduler with configurable time and frequency

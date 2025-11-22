@@ -13,19 +13,82 @@
         </div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('backup_settings') }}">
-                <div class="row">
-                    <div class="col-md-8">
-                        <div class="mb-3">
-                            <label for="shared_folder_path" class="form-label">Shared Folder Path</label>
-                            <input type="text" class="form-control" id="shared_folder_path" name="shared_folder_path" 
-                                   value="{{ config.shared_folder_path or '' }}" 
-                                   placeholder="/mnt/network_share or \\192.168.1.100\backups">
-                            <small class="text-muted">
-                                <i class="bi bi-info-circle"></i> Enter the path to your network share (must be mounted and accessible). Example: /mnt/backups
-                            </small>
+                <div class="mb-3">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="use_smb" name="use_smb"
+                               {% if config.use_smb %}checked{% endif %} onchange="toggleBackupMode()">
+                        <label class="form-check-label" for="use_smb">
+                            <strong><i class="bi bi-hdd-network"></i> Use SMB/CIFS Network Share</strong>
+                        </label>
+                    </div>
+                    <small class="text-muted">Enable to connect directly to SMB/CIFS shares (Windows/Samba)</small>
+                </div>
+                
+                <div id="smb-config" style="{% if not config.use_smb %}display:none;{% endif %}">
+                    <div class="alert alert-info">
+                        <i class="bi bi-key"></i> <strong>SMB Credentials Required:</strong> Please set <code>SMB_USERNAME</code> and <code>SMB_PASSWORD</code> in environment secrets for authentication.
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smb_server" class="form-label">SMB Server <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="smb_server" name="smb_server" 
+                                       value="{{ config.smb_server or '' }}" placeholder="192.168.1.100 or server.local">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smb_share" class="form-label">SMB Share Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="smb_share" name="smb_share" 
+                                       value="{{ config.smb_share or '' }}" placeholder="backups">
+                            </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smb_port" class="form-label">SMB Port</label>
+                                <input type="number" class="form-control" id="smb_port" name="smb_port" 
+                                       value="{{ config.smb_port or 445 }}" min="1" max="65535">
+                                <small class="text-muted">Default: 445</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="smb_domain" class="form-label">Domain (Optional)</label>
+                                <input type="text" class="form-control" id="smb_domain" name="smb_domain" 
+                                       value="{{ config.smb_domain or '' }}" placeholder="WORKGROUP or DOMAIN">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" onclick="testSMBConnection()">
+                            <i class="bi bi-plug"></i> Test SMB Connection
+                        </button>
+                        <span id="smb-test-result" class="ms-2"></span>
+                    </div>
+                    <hr>
+                </div>
+                
+                <div id="local-path-config" style="{% if config.use_smb %}display:none;{% endif %}">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="mb-3">
+                                <label for="shared_folder_path" class="form-label">Local Shared Folder Path</label>
+                                <input type="text" class="form-control" id="shared_folder_path" name="shared_folder_path" 
+                                       value="{{ config.shared_folder_path or '' }}" 
+                                       placeholder="/mnt/network_share">
+                                <small class="text-muted">
+                                    <i class="bi bi-info-circle"></i> Enter the path to your network share (must be mounted and accessible). Example: /mnt/backups
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-12">
                         <div class="mb-3">
                             <label class="form-label">Backup Status</label>
                             <div class="form-check form-switch">
@@ -117,4 +180,48 @@
         </div>
     </div>
 </div>
+
+<script>
+function toggleBackupMode() {
+    const useSMB = document.getElementById('use_smb').checked;
+    document.getElementById('smb-config').style.display = useSMB ? 'block' : 'none';
+    document.getElementById('local-path-config').style.display = useSMB ? 'none' : 'block';
+}
+
+function testSMBConnection() {
+    const resultSpan = document.getElementById('smb-test-result');
+    const btn = event.target;
+    const originalHTML = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Testing...';
+    resultSpan.innerHTML = '';
+    
+    const formData = new FormData();
+    formData.append('smb_server', document.getElementById('smb_server').value);
+    formData.append('smb_share', document.getElementById('smb_share').value);
+    formData.append('smb_port', document.getElementById('smb_port').value);
+    
+    fetch('{{ url_for("test_smb_connection_route") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+        
+        if (data.success) {
+            resultSpan.innerHTML = '<span class="badge bg-success"><i class="bi bi-check-circle"></i> ' + data.message + '</span>';
+        } else {
+            resultSpan.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> ' + data.message + '</span>';
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = originalHTML;
+        resultSpan.innerHTML = '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Connection test failed</span>';
+    });
+}
+</script>
 {% endblock %}
