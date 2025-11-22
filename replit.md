@@ -29,12 +29,18 @@ Key architectural decisions and features include:
 - **SMB/CIFS Network Share Support**: Added direct SMB/CIFS network share connectivity for backup system. Features include:
   - Direct connection to Windows/Samba network shares without mounting
   - SMB configuration in backup settings (server, share, port, domain)
-  - Secure credential storage using environment secrets (SMB_USERNAME, SMB_PASSWORD)
+  - **Dual-mode credential storage**: Database (encrypted with Fernet) OR environment variables (SMB_USERNAME, SMB_PASSWORD)
+  - Priority-based credential retrieval: Database credentials take precedence over environment variables
+  - Fernet symmetric encryption using SESSION_SECRET-derived key (PBKDF2HMAC with SHA256, 100k iterations)
+  - Proper error handling: Encryption/decryption failures raise ValueError with logging, preventing silent fallback
+  - Credential source transparency: Flash messages and logs indicate whether credentials came from database or environment
   - Test connection functionality to verify SMB settings before saving
   - Thread-safe backup operations with RLock for concurrent request handling
   - Support for both local mounted folders and direct SMB connections
   - Toggle between local path and SMB mode in admin UI
+  - Configuration status card shows current mode, destination, and backup schedule details
   - Uses smbprotocol library for modern SMBv2/SMBv3 support
+  - Security warnings in UI clearly indicate database storage is for low-risk LAN environments only
 - **Backup & Restore System**: Implemented comprehensive automated backup system with scheduled backups to shared LAN folders. Features include:
   - Admin UI for configuring shared folder path, backup schedule (daily/weekly/monthly), and retention policies
   - Automated backups using APScheduler with configurable time and frequency
