@@ -112,19 +112,32 @@
                     </div>
                     <div class="card-body">
                         <div class="mb-3">
-                            <label for="attachments" class="form-label">Upload Files (Images/Videos)</label>
-                            <input type="file" class="form-control" id="attachments" name="attachments" 
-                                   accept=".jpg,.jpeg,.bmp,.mp4,.avi,.mov" multiple onchange="updateFileList()">
-                            <div class="form-text">
-                                <strong>Multiple files supported.</strong> Max total size: 1GB<br>
-                                Images: JPG, BMP | Videos: MP4, AVI, MOV<br>
-                                <small class="text-info"><i class="bi bi-info-circle"></i> Hold <kbd>Ctrl</kbd> (Windows/Linux) or <kbd>⌘</kbd> (Mac) while clicking to select multiple files</small>
+                            <label class="form-label">Upload Files (Images/Videos)</label>
+                            <input type="file" class="d-none" id="fileInput" accept=".jpg,.jpeg,.bmp,.mp4,.avi,.mov" multiple onchange="addFilesToQueue()">
+                            
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('fileInput').click()">
+                                    <i class="bi bi-plus-circle"></i> Add Files (can add from multiple folders)
+                                </button>
                             </div>
-                            <div id="fileList" class="mt-2"></div>
-                            <div id="uploadProgress" class="mt-2" style="display: none;">
-                                <div class="progress">
-                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
-                                         style="width: 100%">Uploading files...</div>
+                            
+                            <div class="form-text">
+                                <strong>Click "Add Files" multiple times to select from different folders.</strong><br>
+                                Images: JPG, BMP | Videos: MP4, AVI, MOV | Max total: 1GB<br>
+                                <small class="text-info"><i class="bi bi-info-circle"></i> You can also hold <kbd>Ctrl</kbd> (Windows/Linux) or <kbd>⌘</kbd> (Mac) to select multiple files at once</small>
+                            </div>
+                            
+                            <div id="fileQueue" class="mt-3"></div>
+                            
+                            <div id="uploadProgress" class="mt-3" style="display: none;">
+                                <div class="alert alert-info">
+                                    <strong><i class="bi bi-cloud-upload"></i> Uploading files...</strong>
+                                    <div class="progress mt-2" style="height: 25px;">
+                                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" style="width: 100%">
+                                            Please wait...
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -192,52 +205,127 @@
 </div>
 
 <script>
-function updateFileList() {
-    const fileInput = document.getElementById('attachments');
-    const fileList = document.getElementById('fileList');
+// File queue for accumulating files from multiple folders
+let fileQueue = [];
+
+function addFilesToQueue() {
+    const fileInput = document.getElementById('fileInput');
+    const files = Array.from(fileInput.files);
     
-    if (fileInput.files.length > 0) {
-        let html = '<div class="alert alert-info"><strong>Selected files:</strong><ul class="mb-0 mt-2">';
-        for (let i = 0; i < fileInput.files.length; i++) {
-            const file = fileInput.files[i];
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-            const icon = file.type.startsWith('image/') ? 'bi-image' : 'bi-camera-video';
-            html += `<li><i class="bi ${icon}"></i> ${file.name} (${sizeMB} MB)</li>`;
+    // Add new files to queue
+    files.forEach(file => {
+        // Check for duplicates by name
+        const isDuplicate = fileQueue.some(f => f.name === file.name && f.size === file.size);
+        if (!isDuplicate) {
+            fileQueue.push(file);
         }
-        html += '</ul></div>';
-        fileList.innerHTML = html;
-    } else {
-        fileList.innerHTML = '';
-    }
+    });
+    
+    // Clear the input so user can select from another folder
+    fileInput.value = '';
+    
+    // Update display
+    displayFileQueue();
 }
 
-// Show upload progress when form is submitted
+function removeFileFromQueue(index) {
+    fileQueue.splice(index, 1);
+    displayFileQueue();
+}
+
+function displayFileQueue() {
+    const queueDiv = document.getElementById('fileQueue');
+    
+    if (fileQueue.length === 0) {
+        queueDiv.innerHTML = '';
+        return;
+    }
+    
+    let totalSize = fileQueue.reduce((sum, file) => sum + file.size, 0);
+    let totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+    
+    let html = `<div class="card">
+        <div class="card-header bg-light">
+            <strong><i class="bi bi-paperclip"></i> Files to Upload (${fileQueue.length})</strong>
+            <span class="badge bg-info ms-2">${totalSizeMB} MB total</span>
+        </div>
+        <div class="list-group list-group-flush">`;
+    
+    fileQueue.forEach((file, index) => {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        const icon = file.type.startsWith('image/') ? 'bi-image text-primary' : 'bi-camera-video text-danger';
+        html += `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+                <span>
+                    <i class="bi ${icon}"></i> ${file.name}
+                    <small class="text-muted">(${sizeMB} MB)</small>
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFileFromQueue(${index})">
+                    <i class="bi bi-trash"></i> Remove
+                </button>
+            </div>`;
+    });
+    
+    html += '</div></div>';
+    queueDiv.innerHTML = html;
+}
+
+// Handle form submission
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.querySelector('form');
-    const fileInput = document.getElementById('attachments');
-    const uploadProgress = document.getElementById('uploadProgress');
+    const form = document.querySelector('form[method="POST"]');
     
     form.addEventListener('submit', function(e) {
-        if (fileInput.files.length > 0) {
-            // Check if any file is large (> 5MB)
-            let hasLargeFile = false;
-            for (let i = 0; i < fileInput.files.length; i++) {
-                if (fileInput.files[i].size > 5 * 1024 * 1024) {
-                    hasLargeFile = true;
-                    break;
-                }
-            }
+        e.preventDefault();
+        
+        // Show progress indicator if there are files
+        if (fileQueue.length > 0) {
+            document.getElementById('uploadProgress').style.display = 'block';
             
-            if (hasLargeFile) {
-                uploadProgress.style.display = 'block';
-                // Disable submit button to prevent double submission
-                const submitBtn = form.querySelector('button[type="submit"]');
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
-                }
+            // Disable submit button
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
             }
         }
+        
+        // Create FormData from the form
+        const formData = new FormData(form);
+        
+        // Remove any existing attachments field
+        formData.delete('attachments');
+        
+        // Add files from queue
+        fileQueue.forEach(file => {
+            formData.append('attachments', file);
+        });
+        
+        // Submit the form
+        fetch(form.action, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                window.location.href = response.url;
+            } else {
+                return response.text().then(html => {
+                    document.open();
+                    document.write(html);
+                    document.close();
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Upload error:', error);
+            alert('Error uploading files. Please try again.');
+            document.getElementById('uploadProgress').style.display = 'none';
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="bi bi-save"></i> {% if incident %}Update{% else %}Create{% endif %} Incident';
+            }
+        });
     });
 });
 </script>
