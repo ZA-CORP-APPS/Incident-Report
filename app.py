@@ -573,18 +573,31 @@ def restore_from_backup(backup_path, user='admin'):
     try:
         try:
             config = BackupConfig.get_config()
-            if not config.shared_folder_path:
-                return False, "Shared folder path not configured"
             
-            backup_path_normalized = os.path.normpath(os.path.abspath(backup_path))
-            shared_folder_normalized = os.path.normpath(os.path.abspath(config.shared_folder_path))
-            
-            try:
-                common_path = os.path.commonpath([backup_path_normalized, shared_folder_normalized])
-                if common_path != shared_folder_normalized:
+            # Validate configuration based on backup mode
+            if config.use_smb:
+                # For SMB mode, validate SMB configuration
+                if not config.smb_server or not config.smb_share:
+                    return False, "SMB server and share not configured"
+                
+                # Validate that backup_path is within the SMB share
+                smb_base_path = f"\\\\{config.smb_server}\\{config.smb_share}"
+                if not backup_path.startswith(smb_base_path):
+                    return False, "Security Error: Backup path is outside configured SMB share"
+            else:
+                # For local mode, validate local path
+                if not config.shared_folder_path:
+                    return False, "Shared folder path not configured"
+                
+                backup_path_normalized = os.path.normpath(os.path.abspath(backup_path))
+                shared_folder_normalized = os.path.normpath(os.path.abspath(config.shared_folder_path))
+                
+                try:
+                    common_path = os.path.commonpath([backup_path_normalized, shared_folder_normalized])
+                    if common_path != shared_folder_normalized:
+                        return False, "Security Error: Backup path is outside configured shared folder"
+                except ValueError:
                     return False, "Security Error: Backup path is outside configured shared folder"
-            except ValueError:
-                return False, "Security Error: Backup path is outside configured shared folder"
             
             job = BackupJob(job_type='restore', status='running', user=user)
             db.session.add(job)
@@ -1770,9 +1783,16 @@ def restore_backup_route():
         return redirect(url_for('backup_management'))
     
     config = BackupConfig.get_config()
-    if not config.shared_folder_path:
-        flash('Shared folder not configured', 'danger')
-        return redirect(url_for('backup_management'))
+    
+    # Configuration validation depends on backup mode
+    if config.use_smb:
+        if not config.smb_server or not config.smb_share:
+            flash('SMB server and share not configured', 'danger')
+            return redirect(url_for('backup_management'))
+    else:
+        if not config.shared_folder_path:
+            flash('Shared folder path not configured', 'danger')
+            return redirect(url_for('backup_management'))
     
     # Path validation: skip filesystem checks for SMB paths
     if config.use_smb:
