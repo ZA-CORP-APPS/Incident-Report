@@ -283,9 +283,21 @@ def calculate_sha256(filepath):
 
 def create_backup(user='system'):
     """Create a complete backup of database and media files"""
-    job = BackupJob(job_type='backup', status='running', user=user)
-    db.session.add(job)
-    db.session.commit()
+    global backup_lock
+    
+    if backup_lock:
+        return False, "Another backup operation is currently in progress. Please wait."
+    
+    backup_lock = True
+    job = None
+    
+    try:
+        job = BackupJob(job_type='backup', status='running', user=user)
+        db.session.add(job)
+        db.session.commit()
+    except Exception as e:
+        backup_lock = False
+        return False, f"Failed to create backup job: {str(e)}"
     
     try:
         config = BackupConfig.get_config()
@@ -377,21 +389,27 @@ def create_backup(user='system'):
             
             cleanup_old_backups(config)
             
+            backup_lock = False
             return True, f"Backup created successfully at {backup_dir}"
             
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
             
     except Exception as e:
-        job.status = 'failed'
-        job.completed_at = datetime.utcnow()
-        job.error_message = str(e)
+        try:
+            if job:
+                job.status = 'failed'
+                job.completed_at = datetime.utcnow()
+                job.error_message = str(e)
+                
+            config = BackupConfig.get_config()
+            config.last_backup_status = 'failed'
+            
+            db.session.commit()
+        except:
+            pass
         
-        config = BackupConfig.get_config()
-        config.last_backup_status = 'failed'
-        
-        db.session.commit()
-        
+        backup_lock = False
         return False, f"Backup failed: {str(e)}"
 
 
@@ -436,9 +454,21 @@ def cleanup_old_backups(config):
 
 def restore_from_backup(backup_path, user='admin'):
     """Restore database and media files from a backup"""
-    job = BackupJob(job_type='restore', status='running', user=user)
-    db.session.add(job)
-    db.session.commit()
+    global backup_lock
+    
+    if backup_lock:
+        return False, "Another backup/restore operation is currently in progress. Please wait."
+    
+    backup_lock = True
+    job = None
+    
+    try:
+        job = BackupJob(job_type='restore', status='running', user=user)
+        db.session.add(job)
+        db.session.commit()
+    except Exception as e:
+        backup_lock = False
+        return False, f"Failed to create restore job: {str(e)}"
     
     try:
         metadata_path = os.path.join(backup_path, 'metadata.json')
@@ -500,17 +530,23 @@ def restore_from_backup(backup_path, user='admin'):
             
             db.session.commit()
             
+            backup_lock = False
             return True, f"Successfully restored from backup: {metadata.get('timestamp')}"
             
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
             
     except Exception as e:
-        job.status = 'failed'
-        job.completed_at = datetime.utcnow()
-        job.error_message = str(e)
-        db.session.commit()
+        try:
+            if job:
+                job.status = 'failed'
+                job.completed_at = datetime.utcnow()
+                job.error_message = str(e)
+                db.session.commit()
+        except:
+            pass
         
+        backup_lock = False
         return False, f"Restore failed: {str(e)}"
 
 
@@ -552,6 +588,7 @@ def get_available_backups(shared_folder_path):
 
 
 scheduler = BackgroundScheduler()
+backup_lock = False
 
 
 def scheduled_backup():
@@ -1414,6 +1451,20 @@ def backup_settings():
 @admin_required
 def backup_now():
     """Manually trigger a backup"""
+    config = BackupConfig.get_config()
+    
+    if not config.shared_folder_path:
+        flash('Error: Shared folder path not configured. Please configure backup settings first.', 'danger')
+        return redirect(url_for('backup_management'))
+    
+    if not os.path.exists(config.shared_folder_path):
+        flash(f'Error: Shared folder does not exist: {config.shared_folder_path}', 'danger')
+        return redirect(url_for('backup_management'))
+    
+    if not os.access(config.shared_folder_path, os.W_OK):
+        flash(f'Error: No write permission to shared folder: {config.shared_folder_path}', 'danger')
+        return redirect(url_for('backup_management'))
+    
     success, message = create_backup(user=current_user.username)
     if success:
         flash(message, 'success')
@@ -1448,6 +1499,18 @@ def restore_backup_route():
     
     if not backup_path or not os.path.exists(backup_path):
         flash('Invalid backup path selected', 'danger')
+        return redirect(url_for('backup_management'))
+    
+    config = BackupConfig.get_config()
+    if not config.shared_folder_path:
+        flash('Shared folder not configured', 'danger')
+        return redirect(url_for('backup_management'))
+    
+    backup_path_normalized = os.path.normpath(os.path.abspath(backup_path))
+    shared_folder_normalized = os.path.normpath(os.path.abspath(config.shared_folder_path))
+    
+    if not backup_path_normalized.startswith(shared_folder_normalized):
+        flash('Security Error: Backup path is outside configured shared folder', 'danger')
         return redirect(url_for('backup_management'))
     
     success, message = restore_from_backup(backup_path, user=current_user.username)
