@@ -114,10 +114,18 @@
                         <div class="mb-3">
                             <label for="attachments" class="form-label">Upload Files (Images/Videos)</label>
                             <input type="file" class="form-control" id="attachments" name="attachments" 
-                                   accept=".jpg,.jpeg,.bmp,.mp4,.avi,.mov" multiple>
+                                   accept=".jpg,.jpeg,.bmp,.mp4,.avi,.mov" multiple onchange="updateFileList()">
                             <div class="form-text">
                                 <strong>Multiple files supported.</strong> Max total size: 1GB<br>
-                                Images: JPG, BMP | Videos: MP4, AVI, MOV
+                                Images: JPG, BMP | Videos: MP4, AVI, MOV<br>
+                                <small class="text-info"><i class="bi bi-info-circle"></i> Hold <kbd>Ctrl</kbd> (Windows/Linux) or <kbd>⌘</kbd> (Mac) while clicking to select multiple files</small>
+                            </div>
+                            <div id="fileList" class="mt-2"></div>
+                            <div id="uploadProgress" class="mt-2" style="display: none;">
+                                <div class="progress">
+                                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" 
+                                         style="width: 100%">Uploading files...</div>
+                                </div>
                             </div>
                         </div>
                         
@@ -182,4 +190,55 @@
         </div>
     </form>
 </div>
+
+<script>
+function updateFileList() {
+    const fileInput = document.getElementById('attachments');
+    const fileList = document.getElementById('fileList');
+    
+    if (fileInput.files.length > 0) {
+        let html = '<div class="alert alert-info"><strong>Selected files:</strong><ul class="mb-0 mt-2">';
+        for (let i = 0; i < fileInput.files.length; i++) {
+            const file = fileInput.files[i];
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            const icon = file.type.startsWith('image/') ? 'bi-image' : 'bi-camera-video';
+            html += `<li><i class="bi ${icon}"></i> ${file.name} (${sizeMB} MB)</li>`;
+        }
+        html += '</ul></div>';
+        fileList.innerHTML = html;
+    } else {
+        fileList.innerHTML = '';
+    }
+}
+
+// Show upload progress when form is submitted
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form');
+    const fileInput = document.getElementById('attachments');
+    const uploadProgress = document.getElementById('uploadProgress');
+    
+    form.addEventListener('submit', function(e) {
+        if (fileInput.files.length > 0) {
+            // Check if any file is large (> 5MB)
+            let hasLargeFile = false;
+            for (let i = 0; i < fileInput.files.length; i++) {
+                if (fileInput.files[i].size > 5 * 1024 * 1024) {
+                    hasLargeFile = true;
+                    break;
+                }
+            }
+            
+            if (hasLargeFile) {
+                uploadProgress.style.display = 'block';
+                // Disable submit button to prevent double submission
+                const submitBtn = form.querySelector('button[type="submit"]');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
+                }
+            }
+        }
+    });
+});
+</script>
 {% endblock %}

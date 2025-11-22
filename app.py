@@ -177,18 +177,12 @@ def process_file_uploads(files_list, incident):
     max_size = 1024 * 1024 * 1024  # 1GB
     saved_files = []
     
-    print(f"DEBUG: Processing {len(files_list)} files")
-    
     for file in files_list:
-        print(f"DEBUG: File object: {file}, filename: {file.filename if file else 'None'}")
-        
         if file and file.filename and allowed_file(file.filename):
             # Check file size
             file.seek(0, os.SEEK_END)
             file_size = file.tell()
             file.seek(0)  # Reset file pointer
-            
-            print(f"DEBUG: Processing file: {file.filename}, size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
             
             total_size += file_size
             if total_size > max_size:
@@ -205,7 +199,6 @@ def process_file_uploads(files_list, incident):
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
             filename = f"{timestamp}_{filename}"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            print(f"DEBUG: Saving file to: {filepath}")
             file.save(filepath)
             saved_files.append(filename)
             
@@ -217,11 +210,7 @@ def process_file_uploads(files_list, incident):
                 file_size=file_size
             )
             db.session.add(attachment)
-            print(f"DEBUG: Created attachment record for: {filename}, type: {get_file_type(filename)}")
-        elif file and file.filename:
-            print(f"DEBUG: File rejected - not allowed: {file.filename}")
     
-    print(f"DEBUG: Total files saved: {len(saved_files)}")
     return len(saved_files)
 
 
