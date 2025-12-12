@@ -25,10 +25,13 @@
                         <div class="mb-3">
                             <label for="incident_type" class="form-label">Incident Type *</label>
                             <select class="form-select" id="incident_type" name="incident_type" required>
-                                <option value="Security" {% if not incident or incident.incident_type == 'Security' %}selected{% endif %}>🔐 Security</option>
-                                <option value="Safety" {% if incident and incident.incident_type == 'Safety' %}selected{% endif %}>⚠️ Safety</option>
+                                {% for itype in get_incident_types(incident.incident_type if incident else None) %}
+                                <option value="{{ itype.name }}" {% if (not incident and loop.first) or (incident and incident.incident_type == itype.name) %}selected{% endif %}>
+                                    {{ itype.icon }} {{ itype.name }}{% if not itype.is_active %} (Inactive){% endif %}
+                                </option>
+                                {% endfor %}
                             </select>
-                            <div class="form-text">Select whether this is a security or safety incident</div>
+                            <div class="form-text">Select the type of incident</div>
                         </div>
 
                         <div class="mb-3">

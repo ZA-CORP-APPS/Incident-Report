@@ -68,11 +68,10 @@
                         <tr>
                             <td><strong>#{{ incident.id }}</strong></td>
                             <td>
-                                {% if incident.incident_type == 'Security' %}
-                                <span class="badge bg-primary">🔐 Security</span>
-                                {% else %}
-                                <span class="badge bg-warning text-dark">⚠️ Safety</span>
-                                {% endif %}
+                                {% set itype_info = get_incident_type_info(incident.incident_type) %}
+                                <span class="badge bg-{{ itype_info.color }}{% if itype_info.color == 'warning' %} text-dark{% endif %}">
+                                    {{ itype_info.icon }} {{ itype_info.name }}
+                                </span>
                             </td>
                             <td>{{ incident.incident_datetime.strftime('%Y-%m-%d %H:%M') if incident.incident_datetime else 'N/A' }}</td>
                             <td>{{ incident.camera_location or 'N/A' }}</td>

@@ -28,8 +28,9 @@
                         <label for="incident_type" class="form-label">Incident Type</label>
                         <select class="form-select" id="incident_type" name="incident_type">
                             <option value="All">All Types</option>
-                            <option value="Security">Security</option>
-                            <option value="Safety">Safety</option>
+                            {% for itype in get_incident_types() %}
+                            <option value="{{ itype.name }}">{{ itype.icon }} {{ itype.name }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="col-md-6">

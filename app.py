@@ -195,6 +195,40 @@ class BackupJob(db.Model):
     job_metadata = db.Column(db.Text)  # JSON string with additional details
 
 
+class IncidentType(db.Model):
+    """Stores custom incident types (e.g., Security, Safety, Fire, Medical)"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    color = db.Column(db.String(20), default='primary')  # Bootstrap color: primary, success, warning, danger, info, secondary
+    icon = db.Column(db.String(10), default='')  # Optional emoji icon
+    is_active = db.Column(db.Boolean, default=True)
+    display_order = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    @staticmethod
+    def get_all_active():
+        """Get all active incident types ordered by display_order"""
+        return IncidentType.query.filter_by(is_active=True).order_by(IncidentType.display_order, IncidentType.name).all()
+    
+    @staticmethod
+    def get_all():
+        """Get all incident types including inactive"""
+        return IncidentType.query.order_by(IncidentType.display_order, IncidentType.name).all()
+    
+    @staticmethod
+    def seed_defaults():
+        """Create default incident types if they don't exist"""
+        defaults = [
+            {'name': 'Security', 'color': 'primary', 'icon': '', 'display_order': 1},
+            {'name': 'Safety', 'color': 'warning', 'icon': '', 'display_order': 2}
+        ]
+        for item in defaults:
+            if not IncidentType.query.filter_by(name=item['name']).first():
+                incident_type = IncidentType(**item)
+                db.session.add(incident_type)
+        db.session.commit()
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -206,6 +240,12 @@ def inject_logo():
     return dict(get_app_logo=AppSettings.get_logo)
 
 
+@app.context_processor
+def inject_incident_types():
+    """Make incident types available to all templates"""
+    return dict(get_incident_types=get_incident_types, get_incident_type_info=get_incident_type_info)
+
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
@@ -215,9 +255,60 @@ def validate_severity(severity):
     return severity if severity in allowed_severities else 'Low'
 
 
-def validate_incident_type(incident_type):
-    allowed_types = ['Security', 'Safety']
-    return incident_type if incident_type in allowed_types else 'Security'
+def validate_incident_type(incident_type, allow_inactive=False):
+    """Validate incident type against database of allowed types.
+    
+    Args:
+        incident_type: The type name to validate
+        allow_inactive: If True, allow inactive types (for editing existing incidents)
+    """
+    try:
+        if allow_inactive:
+            all_types = [t.name for t in IncidentType.get_all()]
+            if incident_type in all_types:
+                return incident_type
+        allowed_types = [t.name for t in IncidentType.get_all_active()]
+        if not allowed_types:
+            allowed_types = ['Security', 'Safety']
+        return incident_type if incident_type in allowed_types else allowed_types[0]
+    except Exception:
+        return incident_type if incident_type in ['Security', 'Safety'] else 'Security'
+
+
+def get_incident_types(include_type=None):
+    """Get all active incident types for dropdowns.
+    
+    Args:
+        include_type: Optional type name to include even if inactive (for editing existing incidents)
+    """
+    try:
+        types = list(IncidentType.get_all_active())
+        if include_type and include_type not in [t.name for t in types]:
+            inactive_type = IncidentType.query.filter_by(name=include_type).first()
+            if inactive_type:
+                types.append(inactive_type)
+        if types:
+            return types
+        return [type('obj', (object,), {'name': 'Security', 'color': 'primary', 'icon': ''})(),
+                type('obj', (object,), {'name': 'Safety', 'color': 'warning', 'icon': ''})()]
+    except Exception:
+        return [type('obj', (object,), {'name': 'Security', 'color': 'primary', 'icon': ''})(),
+                type('obj', (object,), {'name': 'Safety', 'color': 'warning', 'icon': ''})()]
+
+
+def get_incident_type_info(type_name):
+    """Get incident type info by name for badge display"""
+    try:
+        itype = IncidentType.query.filter_by(name=type_name).first()
+        if itype:
+            return {'name': itype.name, 'color': itype.color, 'icon': itype.icon}
+    except Exception:
+        pass
+    defaults = {
+        'Security': {'name': 'Security', 'color': 'primary', 'icon': ''},
+        'Safety': {'name': 'Safety', 'color': 'warning', 'icon': ''}
+    }
+    return defaults.get(type_name, {'name': type_name, 'color': 'secondary', 'icon': ''})
 
 
 def get_file_type(filename):
@@ -1099,7 +1190,7 @@ def edit_incident(id):
     
     if request.method == 'POST':
         try:
-            incident.incident_type = validate_incident_type(request.form.get('incident_type', 'Security'))
+            incident.incident_type = validate_incident_type(request.form.get('incident_type', 'Security'), allow_inactive=True)
             incident.incident_datetime = datetime.strptime(request.form.get('incident_datetime'), '%Y-%m-%dT%H:%M')
             incident.camera_location = request.form.get('camera_location')
             incident.severity = validate_severity(request.form.get('severity', 'Low'))
@@ -1718,6 +1809,114 @@ def app_settings():
     return render_template('settings.html', current_logo=current_logo)
 
 
+@app.route('/incident-types')
+@admin_required
+def incident_types():
+    """Admin-only page to manage incident types"""
+    types = IncidentType.get_all()
+    return render_template('incident_types.html', incident_types=types)
+
+
+@app.route('/incident-types/add', methods=['GET', 'POST'])
+@admin_required
+def add_incident_type():
+    """Add a new incident type"""
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        color = request.form.get('color', 'primary')
+        icon = request.form.get('icon', '').strip()
+        display_order = request.form.get('display_order', 0, type=int)
+        
+        if not name:
+            flash('Incident type name is required.', 'danger')
+            return render_template('incident_type_form.html', incident_type=None, colors=get_bootstrap_colors())
+        
+        if IncidentType.query.filter_by(name=name).first():
+            flash(f'Incident type "{name}" already exists.', 'danger')
+            return render_template('incident_type_form.html', incident_type=None, colors=get_bootstrap_colors())
+        
+        new_type = IncidentType(
+            name=name,
+            color=color,
+            icon=icon,
+            display_order=display_order
+        )
+        db.session.add(new_type)
+        db.session.commit()
+        
+        flash(f'Incident type "{name}" created successfully!', 'success')
+        return redirect(url_for('incident_types'))
+    
+    return render_template('incident_type_form.html', incident_type=None, colors=get_bootstrap_colors())
+
+
+@app.route('/incident-types/edit/<int:type_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_incident_type(type_id):
+    """Edit an existing incident type"""
+    incident_type = IncidentType.query.get_or_404(type_id)
+    
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        color = request.form.get('color', 'primary')
+        icon = request.form.get('icon', '').strip()
+        display_order = request.form.get('display_order', 0, type=int)
+        is_active = request.form.get('is_active') == 'on'
+        
+        if not name:
+            flash('Incident type name is required.', 'danger')
+            return render_template('incident_type_form.html', incident_type=incident_type, colors=get_bootstrap_colors())
+        
+        existing = IncidentType.query.filter_by(name=name).first()
+        if existing and existing.id != type_id:
+            flash(f'Incident type "{name}" already exists.', 'danger')
+            return render_template('incident_type_form.html', incident_type=incident_type, colors=get_bootstrap_colors())
+        
+        incident_type.name = name
+        incident_type.color = color
+        incident_type.icon = icon
+        incident_type.display_order = display_order
+        incident_type.is_active = is_active
+        db.session.commit()
+        
+        flash(f'Incident type "{name}" updated successfully!', 'success')
+        return redirect(url_for('incident_types'))
+    
+    return render_template('incident_type_form.html', incident_type=incident_type, colors=get_bootstrap_colors())
+
+
+@app.route('/incident-types/delete/<int:type_id>', methods=['POST'])
+@admin_required
+def delete_incident_type(type_id):
+    """Delete an incident type (only if not in use)"""
+    incident_type = IncidentType.query.get_or_404(type_id)
+    
+    in_use_count = Incident.query.filter_by(incident_type=incident_type.name).count()
+    if in_use_count > 0:
+        flash(f'Cannot delete "{incident_type.name}" - it is used by {in_use_count} incident(s). Deactivate it instead.', 'danger')
+        return redirect(url_for('incident_types'))
+    
+    name = incident_type.name
+    db.session.delete(incident_type)
+    db.session.commit()
+    
+    flash(f'Incident type "{name}" deleted successfully!', 'success')
+    return redirect(url_for('incident_types'))
+
+
+def get_bootstrap_colors():
+    """Return available Bootstrap color options"""
+    return [
+        {'value': 'primary', 'name': 'Blue (Primary)', 'class': 'bg-primary'},
+        {'value': 'secondary', 'name': 'Gray (Secondary)', 'class': 'bg-secondary'},
+        {'value': 'success', 'name': 'Green (Success)', 'class': 'bg-success'},
+        {'value': 'danger', 'name': 'Red (Danger)', 'class': 'bg-danger'},
+        {'value': 'warning', 'name': 'Yellow (Warning)', 'class': 'bg-warning'},
+        {'value': 'info', 'name': 'Cyan (Info)', 'class': 'bg-info'},
+        {'value': 'dark', 'name': 'Dark', 'class': 'bg-dark'},
+    ]
+
+
 @app.route('/backup-settings', methods=['GET', 'POST'])
 @admin_required
 def backup_settings():
@@ -1951,6 +2150,8 @@ def generate_strong_password(length=16):
 def init_db():
     with app.app_context():
         db.create_all()
+        
+        IncidentType.seed_defaults()
         
         if not User.query.filter_by(username='admin').first():
             admin_password = generate_strong_password(20)

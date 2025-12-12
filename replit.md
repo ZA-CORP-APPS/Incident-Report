@@ -25,6 +25,17 @@ Key architectural decisions and features include:
 - **Application Settings**: Admin-only functionality to upload an app-wide logo (JPG/BMP), displayed in the navigation bar at 40px height. Automatic cleanup removes old logo files when uploading new ones. Settings stored in AppSettings model using key-value pairs. Context processor makes logo available across all templates.
 - **File Management**: Secure file uploads with validation, sanitization, and timestamped filenames. Maximum upload size: 1GB per incident.
 
+## Recent Changes (2025-12-12)
+- **Custom Incident Types**: Implemented admin-controlled custom incident types replacing hardcoded Security/Safety options:
+  - **IncidentType Model**: New database model with name, color, icon, is_active, display_order fields
+  - **Admin Management UI**: Full CRUD operations for incident types via Admin menu -> Incident Types
+  - **Dynamic Dropdowns**: All incident forms and reports now use database-driven type selection
+  - **Customizable Badges**: Each type has configurable Bootstrap color and optional emoji icon
+  - **Inactive Types**: Types can be deactivated without deletion (hidden from new incidents but preserved in historical data)
+  - **Backwards Compatible**: Existing incidents retain their types; editing incidents with inactive types preserves the original type
+  - **Migration Script**: update-incident-types.py safely adds the new table to production databases
+  - **Context Processor**: get_incident_types() and get_incident_type_info() available in all templates
+
 ## Recent Changes (2025-11-22)
 - **Automated Ubuntu Deployment**: Created comprehensive deployment system for production Ubuntu servers with one-command setup:
   - **deploy-ubuntu.sh**: Fully automated deployment script that handles dependencies, virtual environment, SESSION_SECRET generation, systemd service creation with embedded secrets, and automatic startup on boot

@@ -36,11 +36,10 @@
                         <tr>
                             <th>Incident Type:</th>
                             <td>
-                                {% if incident.incident_type == 'Security' %}
-                                <span class="badge bg-primary">🔐 Security</span>
-                                {% else %}
-                                <span class="badge bg-warning text-dark">⚠️ Safety</span>
-                                {% endif %}
+                                {% set itype_info = get_incident_type_info(incident.incident_type) %}
+                                <span class="badge bg-{{ itype_info.color }}{% if itype_info.color == 'warning' %} text-dark{% endif %}">
+                                    {{ itype_info.icon }} {{ itype_info.name }}
+                                </span>
                             </td>
                         </tr>
                         <tr>

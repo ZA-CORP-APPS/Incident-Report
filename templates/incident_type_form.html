@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}{% if incident_type %}Edit{% else %}Add{% endif %} Incident Type{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h2>
+        <i class="bi bi-{% if incident_type %}pencil{% else %}plus-circle{% endif %}"></i>
+        {% if incident_type %}Edit{% else %}Add New{% endif %} Incident Type
+    </h2>
+    <p class="text-muted">
+        {% if incident_type %}
+        Modify the incident type settings
+        {% else %}
+        Create a new custom incident type
+        {% endif %}
+    </p>
+    
+    <div class="card mt-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-tag"></i> Incident Type Details</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">Type Name *</label>
+                            <input type="text" class="form-control" id="name" name="name" required
+                                   value="{{ incident_type.name if incident_type else '' }}"
+                                   placeholder="e.g., Fire, Medical, Theft">
+                            <div class="form-text">This name will appear in dropdown menus and badges</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="icon" class="form-label">Icon (Emoji)</label>
+                            <input type="text" class="form-control" id="icon" name="icon"
+                                   value="{{ incident_type.icon if incident_type else '' }}"
+                                   placeholder="e.g., &#128293; &#127973; &#128657;"
+                                   maxlength="10">
+                            <div class="form-text">Optional emoji icon for visual identification</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="display_order" class="form-label">Display Order</label>
+                            <input type="number" class="form-control" id="display_order" name="display_order"
+                                   value="{{ incident_type.display_order if incident_type else 0 }}"
+                                   min="0" max="999">
+                            <div class="form-text">Lower numbers appear first in dropdown menus</div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="color" class="form-label">Badge Color *</label>
+                            <select class="form-select" id="color" name="color" required>
+                                {% for c in colors %}
+                                <option value="{{ c.value }}" 
+                                        {% if incident_type and incident_type.color == c.value %}selected{% endif %}
+                                        {% if not incident_type and c.value == 'primary' %}selected{% endif %}>
+                                    {{ c.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Choose a color for the incident type badge</div>
+                        </div>
+                        
+                        {% if incident_type %}
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
+                                       {% if incident_type.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">
+                                    Active (available in dropdown menus)
+                                </label>
+                            </div>
+                            <div class="form-text">Inactive types won't appear when creating new incidents</div>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Preview</label>
+                            <div class="border p-3 bg-light rounded">
+                                <span id="badge-preview" class="badge bg-{{ incident_type.color if incident_type else 'primary' }} fs-6">
+                                    <span id="preview-icon">{{ incident_type.icon if incident_type else '' }}</span>
+                                    <span id="preview-name">{{ incident_type.name if incident_type else 'Type Name' }}</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="d-flex justify-content-between">
+                    <a href="{{ url_for('incident_types') }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-circle"></i>
+                        {% if incident_type %}Update{% else %}Create{% endif %} Incident Type
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const nameInput = document.getElementById('name');
+    const iconInput = document.getElementById('icon');
+    const colorSelect = document.getElementById('color');
+    const badgePreview = document.getElementById('badge-preview');
+    const previewName = document.getElementById('preview-name');
+    const previewIcon = document.getElementById('preview-icon');
+    
+    function updatePreview() {
+        previewName.textContent = nameInput.value || 'Type Name';
+        previewIcon.textContent = iconInput.value;
+        
+        badgePreview.className = 'badge bg-' + colorSelect.value + ' fs-6';
+    }
+    
+    nameInput.addEventListener('input', updatePreview);
+    iconInput.addEventListener('input', updatePreview);
+    colorSelect.addEventListener('change', updatePreview);
+});
+</script>
+{% endblock %}
