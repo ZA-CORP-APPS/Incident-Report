@@ -1,6 +1,6 @@
 # Auto-Start Setup for Ubuntu
 
-Since your app is already deployed on Ubuntu, this guide shows you how to make it start automatically on server reboot.
+**Note**: If you're deploying fresh, use the automated `deploy-ubuntu.sh` script instead (see DEPLOYMENT.md). This guide is for existing deployments that need auto-start configured.
 
 ## Quick Setup (One Command)
 

@@ -19,7 +19,11 @@ A comprehensive, lightweight web application for managing security and safety in
   - Strong password generation for admin accounts
 
 ### 📋 Incident Management
-- **Incident Type Classification**: Security incidents or Safety incidents with color-coded badges
+- **Dynamic Incident Type Classification**: Admin-customizable incident types (defaults to Security and Safety)
+  - Create unlimited custom incident types via Admin menu
+  - Configure color and optional emoji icon per type
+  - Deactivate types without data loss (historical data preserved)
+  - All incident types automatically available in forms and reports
 - **Comprehensive Data Fields**:
   - Auto-generated incident ID
   - Date and time of incident
@@ -55,14 +59,15 @@ A comprehensive, lightweight web application for managing security and safety in
 ### 📊 Analytics Dashboard
 - **Visual Statistics** powered by Chart.js:
   - Incidents by month (last 12 months)
-  - Incidents by type (Security vs Safety)
+  - Incidents by all custom types (dynamically populated)
   - Severity distribution
   - Review status breakdown
   - Top 10 camera locations
   - Yearly trends
-  - Monthly type breakdown
-- **Real-Time Updates**: All charts reflect current database state
+  - Monthly type breakdown with dynamic type comparison
+- **Real-Time Updates**: All charts reflect current database state and automatically adapt to new incident types
 - **Interactive Charts**: Hover for detailed information
+- **Dynamic Adaptation**: No configuration needed - analytics automatically handle any number of custom incident types
 
 ### 📑 Reporting
 - **Multi-Incident Reports**: Generate comprehensive reports with extensive filtering
@@ -150,9 +155,9 @@ A comprehensive, lightweight web application for managing security and safety in
 
 ### 🎨 User Interface
 - **Clean Bootstrap 5 Design**: Professional, responsive layout
-- **Color-Coded Indicators**:
+- **Customizable Color-Coded Indicators**:
   - Severity: Low (Green), Medium (Yellow), High (Orange), Critical (Red)
-  - Incident Type: Security (Blue), Safety (Yellow)
+  - Incident Type: Customizable colors and icons (Security Blue, Safety Yellow by default)
   - Status: Pending (Warning), Reviewed (Success)
 - **Intuitive Navigation**: Easy access to all features
 - **Flash Messages**: Real-time user feedback
@@ -344,7 +349,7 @@ incident-log-system/
 
 1. Click **"New Incident"** button on the dashboard
 2. Fill in the incident details:
-   - **Incident Type**: Select Security or Safety
+   - **Incident Type**: Select from custom types (managed in Admin → Incident Types)
    - **Date & Time**: Select when incident occurred (required)
    - **Camera Location**: Enter location (autocomplete enabled)
    - **Severity**: Choose Low, Medium, High, or Critical
@@ -367,11 +372,12 @@ incident-log-system/
 - **Dashboard**: Shows all incidents in sortable table
 - **Sort by Date**: Click "Earliest First" or "Latest First" toggle buttons
 - **Color Badges**:
-  - Incident Type: Blue (Security), Yellow (Safety)
+  - Incident Type: Color-coded per custom type configuration
   - Severity: Green (Low), Yellow (Medium), Orange (High), Red (Critical)
   - Status: Yellow (Pending), Green (Reviewed)
 - **View Details**: Click eye icon to see full incident with attachments
 - **Search**: Use search box to filter by any field
+- **Inactive Types**: Incidents with deactivated types still display correctly
 
 ### Managing Attachments
 
@@ -394,9 +400,13 @@ When viewing an incident:
 
 Access via **"Analytics"** menu:
 - View incident trends and statistics
-- Interactive charts with hover details
-- Charts update automatically with new data
+- **Summary Cards**: Display counts for all incident types automatically
+- **Incident Type Chart**: Pie chart of all custom types with dynamic colors
+- **Monthly Trends**: Line chart showing trends across all custom types
+- **Interactive Charts**: Hover for detailed information
+- Charts update automatically with new data and new incident types
 - Filter by clicking chart elements
+- **No Configuration Needed**: Add new incident types and charts adapt automatically
 
 ### Generating Reports
 
@@ -422,6 +432,28 @@ Access via **"Audit History"** menu:
 - See who made changes and when
 - Review deleted incident snapshots
 - Navigate through pages (50 logs per page)
+
+### Managing Incident Types (Admin Only)
+
+Access via **"Admin"** → **"Incident Types"**:
+
+**Create New Type**:
+1. Click **"Add New Type"**
+2. Enter incident type name (e.g., "Equipment Failure", "Environmental")
+3. Select Bootstrap color (primary, success, warning, danger, info, etc.)
+4. Add optional emoji icon (e.g., ⚙️, 🌡️, 🔥)
+5. Click **"Create Type"**
+
+**Manage Existing Types**:
+- **Edit**: Modify name, color, or icon
+- **Deactivate**: Hide from new incidents while preserving historical data
+- **Delete**: Remove types (data not affected)
+- All incident forms and reports automatically update
+
+**Notes**:
+- New types appear in all incident dropdowns immediately
+- Incidents with deactivated types can still be viewed and edited
+- Backward compatible: existing incidents retain their types
 
 ### User Management (Admin Only)
 
