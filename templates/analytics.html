@@ -21,24 +21,17 @@
                 </div>
             </div>
         </div>
+        {% for itype in active_types %}
         <div class="col-md-3">
             <div class="card bg-info text-white">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-shield-lock"></i> Security Incidents</h6>
-                    <h2 class="display-4">{{ security_count }}</h2>
-                    <small>{{ (security_count / total_incidents * 100) | round(1) if total_incidents > 0 else 0 }}% of total</small>
+                    <h6 class="card-title"><i class="bi bi-tag"></i> {{ itype }} Incidents</h6>
+                    <h2 class="display-4">{{ type_stats[itype] }}</h2>
+                    <small>{{ ((type_stats[itype] / total_incidents * 100) | round(1)) if total_incidents > 0 else 0 }}% of total</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card bg-warning text-dark">
-                <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-exclamation-triangle"></i> Safety Incidents</h6>
-                    <h2 class="display-4">{{ safety_count }}</h2>
-                    <small>{{ (safety_count / total_incidents * 100) | round(1) if total_incidents > 0 else 0 }}% of total</small>
-                </div>
-            </div>
-        </div>
+        {% if loop.index == 2 %}
         <div class="col-md-3">
             <div class="card bg-success text-white">
                 <div class="card-body">
@@ -48,6 +41,8 @@
                 </div>
             </div>
         </div>
+        {% endif %}
+        {% endfor %}
     </div>
 
     <!-- Charts Row 1 -->
@@ -180,15 +175,31 @@ new Chart(monthCtx, {
     }
 });
 
-// 2. Incident Type Pie Chart
+// Prepare color palette for incident types
+const typeColors = [
+    chartColors.primary,
+    chartColors.warning,
+    chartColors.info,
+    chartColors.orange,
+    chartColors.danger,
+    chartColors.success,
+    chartColors.purple
+];
+
+// 2. Incident Type Pie Chart (Dynamic)
 const typeCtx = document.getElementById('typeChart').getContext('2d');
+const typeLabels = {{ active_types | tojson }};
+const typeData = {{ type_stats | tojson }};
+const typeValues = typeLabels.map(type => typeData[type]);
+const typeBackgrounds = typeLabels.map((type, idx) => typeColors[idx % typeColors.length]);
+
 new Chart(typeCtx, {
     type: 'doughnut',
     data: {
-        labels: ['Security', 'Safety'],
+        labels: typeLabels,
         datasets: [{
-            data: [{{ security_count }}, {{ safety_count }}],
-            backgroundColor: [chartColors.primary, chartColors.warning],
+            data: typeValues,
+            backgroundColor: typeBackgrounds,
             borderWidth: 2
         }]
     },
@@ -300,27 +311,23 @@ new Chart(yearCtx, {
     }
 });
 
-// 7. Monthly Type Breakdown (Stacked Line Chart)
+// 7. Monthly Type Breakdown (Dynamic Line Chart)
 const monthlyTypeCtx = document.getElementById('monthlyTypeChart').getContext('2d');
+const monthTypeData = {{ month_by_type | tojson }};
+const monthTypeDatasets = Object.keys(monthTypeData).map((type, idx) => ({
+    label: type,
+    data: monthTypeData[type],
+    borderColor: typeColors[idx % typeColors.length],
+    backgroundColor: typeColors[idx % typeColors.length] + '33',
+    fill: true,
+    tension: 0.4
+}));
+
 new Chart(monthlyTypeCtx, {
     type: 'line',
     data: {
         labels: {{ month_labels | tojson }},
-        datasets: [{
-            label: 'Security',
-            data: {{ month_security | tojson }},
-            borderColor: chartColors.primary,
-            backgroundColor: chartColors.primary + '33',
-            fill: true,
-            tension: 0.4
-        }, {
-            label: 'Safety',
-            data: {{ month_safety | tojson }},
-            borderColor: chartColors.warning,
-            backgroundColor: chartColors.warning + '33',
-            fill: true,
-            tension: 0.4
-        }]
+        datasets: monthTypeDatasets
     },
     options: {
         responsive: true,

@@ -1334,9 +1334,16 @@ def analytics():
     incidents = Incident.query.all()
     total_incidents = len(incidents)
     
-    # Statistics by incident type
-    security_count = sum(1 for i in incidents if i.incident_type == 'Security')
-    safety_count = sum(1 for i in incidents if i.incident_type == 'Safety')
+    # Get all active incident types dynamically
+    try:
+        active_types = [t.name for t in IncidentType.get_all_active()]
+        if not active_types:
+            active_types = ['Security', 'Safety']
+    except Exception:
+        active_types = ['Security', 'Safety']
+    
+    # Statistics by incident type (dynamic)
+    type_stats = {itype: sum(1 for i in incidents if i.incident_type == itype) for itype in active_types}
     
     # Statistics by severity
     severity_stats = {
@@ -1350,31 +1357,33 @@ def analytics():
     reviewed_count = sum(1 for i in incidents if i.reviewed_by)
     pending_count = total_incidents - reviewed_count
     
-    # Incidents by month (last 12 months)
+    # Incidents by month (last 12 months) with dynamic types
     incidents_by_month = defaultdict(int)
-    incidents_by_month_type = defaultdict(lambda: {'Security': 0, 'Safety': 0})
+    incidents_by_month_type = defaultdict(lambda: {itype: 0 for itype in active_types})
     
     now = datetime.now()
     for i in range(12):
         month_date = now - timedelta(days=30 * i)
         month_key = month_date.strftime('%Y-%m')
         incidents_by_month[month_key] = 0
-        incidents_by_month_type[month_key] = {'Security': 0, 'Safety': 0}
+        incidents_by_month_type[month_key] = {itype: 0 for itype in active_types}
     
     for incident in incidents:
         if incident.incident_datetime:
             month_key = incident.incident_datetime.strftime('%Y-%m')
             if month_key in incidents_by_month:
                 incidents_by_month[month_key] += 1
-                incident_type = incident.incident_type or 'Security'
-                incidents_by_month_type[month_key][incident_type] += 1
+                incident_type = incident.incident_type or active_types[0]
+                if incident_type in incidents_by_month_type[month_key]:
+                    incidents_by_month_type[month_key][incident_type] += 1
     
     # Sort months chronologically
     sorted_months = sorted(incidents_by_month.keys())
     month_labels = [datetime.strptime(m, '%Y-%m').strftime('%b %Y') for m in sorted_months]
     month_values = [incidents_by_month[m] for m in sorted_months]
-    month_security = [incidents_by_month_type[m]['Security'] for m in sorted_months]
-    month_safety = [incidents_by_month_type[m]['Safety'] for m in sorted_months]
+    
+    # Build month_by_type data structure for all active types
+    month_by_type = {itype: [incidents_by_month_type[m][itype] for m in sorted_months] for itype in active_types}
     
     # Incidents by camera location (top 10)
     location_stats = defaultdict(int)
@@ -1399,15 +1408,14 @@ def analytics():
     
     return render_template('analytics.html',
                          total_incidents=total_incidents,
-                         security_count=security_count,
-                         safety_count=safety_count,
+                         type_stats=type_stats,
+                         active_types=active_types,
                          severity_stats=severity_stats,
                          reviewed_count=reviewed_count,
                          pending_count=pending_count,
                          month_labels=month_labels,
                          month_values=month_values,
-                         month_security=month_security,
-                         month_safety=month_safety,
+                         month_by_type=month_by_type,
                          location_labels=location_labels,
                          location_values=location_values,
                          year_labels=year_labels,
