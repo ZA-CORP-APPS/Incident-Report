@@ -25,20 +25,7 @@ sudo bash deploy-ubuntu.sh
 # - Admin username and password
 ```
 
-**That's it!** The application is now running and will automatically start after server reboots.
-
-### Updating Existing Deployments with Custom Incident Types
-
-If you've already deployed the application and want to add the custom incident types feature:
-
-```bash
-cd /home/lulo/Incident-Report
-source venv/bin/activate
-python update-incident-types.py
-sudo systemctl restart incident-log
-```
-
-Then access Admin menu → Incident Types to create your custom types.
+**That's it!** The application is now running and will automatically start after server reboots. The custom incident types feature is included and ready to use—access Admin menu → Incident Types to create your custom types.
 
 ---
 
@@ -199,10 +186,6 @@ source venv/bin/activate
 # Update dependencies (if requirements.txt changed)
 pip install -r requirements.txt
 
-# If adding custom incident types feature (first time after pull)
-# Run the migration script
-python update-incident-types.py
-
 # Restart the service
 sudo systemctl restart incident-log
 
@@ -210,7 +193,17 @@ sudo systemctl restart incident-log
 sudo systemctl status incident-log
 ```
 
-**Note**: The migration script is idempotent and safe to run multiple times. Run it once to add the custom incident types table to your database, then you can manage types via Admin → Incident Types.
+### For Existing Deployments (Before Custom Incident Types)
+
+If your deployment existed **before** the custom incident types feature was added, run this migration script once:
+
+```bash
+source venv/bin/activate
+python update-incident-types.py
+sudo systemctl restart incident-log
+```
+
+This safely adds the incident types table to your existing database. The script is idempotent (safe to run multiple times).
 
 ---
 
